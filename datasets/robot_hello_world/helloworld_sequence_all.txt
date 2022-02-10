@@ -1,0 +1,7 @@
+h.npy
+e.npy
+l.npy
+o.npy
+w.npy
+r.npy
+d.npy

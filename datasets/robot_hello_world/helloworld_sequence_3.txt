@@ -1,0 +1,4 @@
+w.npy
+r.npy
+d.npy
+o.npy
