@@ -2,7 +2,7 @@
 
 ![Robot executing HelloWorld tasks](videos_images/helloworld_robot.gif?raw=true "Robot executing HelloWorld tasks")
 
-Methods for teaching motion skills to robots focus on training for a single skill at a time. Robots capable of learning from demonstration can considerably benefit from the added ability to learn new movements without forgetting past knowledge. To this end, we propose an approach for continual learning from demonstration using hypernetworks and neural ordinary differential equation solvers. We empirically demonstrate the effectiveness of our approach in remembering long sequences of trajectory learning tasks without the need to store any data from past demonstrations. Our results show that hypernetworks outperform other state-of-the-art regularization-based continual learning approaches for learning from demonstration. In our experiments, we use the popular LASA trajectory benchmark, and a new dataset of kinesthetic demonstrations that we introduce in our [paper](link/to/paper) called the *HelloWorld* dataset. We evaluate our approach using both trajectory error metrics and continual learning metrics, and we propose two new continual learning metrics. Our code, along with the newly collected dataset, is available in this repository.
+Methods for teaching motion skills to robots focus on training for a single skill at a time. Robots capable of learning from demonstration can considerably benefit from the added ability to learn new movements without forgetting past knowledge. To this end, we propose an approach for continual learning from demonstration using hypernetworks and neural ordinary differential equation solvers. We empirically demonstrate the effectiveness of our approach in remembering long sequences of trajectory learning tasks without the need to store any data from past demonstrations. Our results show that hypernetworks outperform other state-of-the-art regularization-based continual learning approaches for learning from demonstration. In our experiments, we use the popular LASA trajectory benchmark, and a new dataset of kinesthetic demonstrations that we introduce in our [paper]() called the *HelloWorld* dataset. We evaluate our approach using both trajectory error metrics and continual learning metrics, and we propose two new continual learning metrics. Our code, along with the newly collected dataset, is available in this repository.
 
 Here is a very short overview of our approach (also available on [YouTube](https://youtu.be/cTfVfYyyeXk)):
 
@@ -16,7 +16,9 @@ The data for each of the 7 tasks can be found as `.npy` files in the folder [`da
 
 ![HelloWorld_dataset](videos_images/HelloWorld_dataset.svg?raw=true "HelloWorld_dataset")
 
-## Setup Instructions
+Please check the file `helloworld_dataset.ipynb` to see how to load this dataset. Code for using this dataset in the training loop can be found in the training scripts `tr_*_node.py` (e.g. `tr_hn_node.py`).
+
+## Code Instructions
 
 ### Clone this repository
 ```
@@ -30,10 +32,11 @@ git clone https://github.com/sayantanauddy/clfd.git
 cd <path/to/this/repository>
 python -m pip install -r requirements.txt
 ```
+Install the GPU version of `torch` if needed.
 
 ### Execute a training run
 
-Here we show the command for training a NODE generating Hypernetwork
+Here we show the command for training a Hypernetwork that generates a NODE:
 ```
 # DATASET: LASA
 # NODE TYPE: NODE^T (with time input)
@@ -42,7 +45,23 @@ python3 tr_hn_node.py --data_dir datasets/LASA/DataSet --num_iter 15000 --tsub 2
 ```
 The complete set of commands for reproducing all our experiments can be found in [commands_LASA.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_LASA.txt) and [commands_HelloWorld.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_HelloWorld.txt).
 
-## View Trajectories Predicted by Trained Models
+
+### Reproducing results
+To reproduce the results from our experiments, use the commands from [commands_LASA.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_LASA.txt) and [commands_HelloWorld.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_HelloWorld.txt). 
+
+Once all the training scripts have completed executing and all log files have been generated in the folder `logs_clfd`, generate plots using the notebook `generate_plots.ipynb`.
+
+### View Trajectories Predicted by Trained Models
+
+First download the pretrained models and extract them to the directory `trained_models`
+```
+cd <path/to/this/repository>
+cd trained_models
+wget https://iis.uibk.ac.at/public/auddy/clfd/trained_models/trained_models.tar.xz
+tar xvf trained_models.tar.xz
+```
+
+Then run the notebook `predict_traj_saved_models.ipynb` for generating trajectory predictions using the pretrained models provided by us.
 
 ## Acknowledgements
 
