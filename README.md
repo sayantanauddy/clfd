@@ -41,7 +41,7 @@ Here we show the command for training a Hypernetwork that generates a NODE:
 # DATASET: LASA
 # NODE TYPE: NODE^T (with time input)
 
-python3 tr_hn_node.py --data_dir datasets/LASA/DataSet --num_iter 15000 --tsub 20 --replicate_num 0 --lr 0.0001 --tnet_dim 2 --tnet_arch 100,100,100 --tnet_act elu --hnet_arch 200,200,200 --task_emb_dim 256 --explicit_time 1 --beta 0.005 --data_class LASA --eval_during_train 0 --seq_file datasets/LASA/lasa_sequence_all.txt --log_dir logs/lasa_explicit_time --plot_fs 10 --figw 16.0 --figh 3.3 --task_names_path datasets/LASA/lasa_names.json --seed 200 --description tr_hn_node_LASA_t1
+python3 tr_hn_node.py --data_dir datasets/LASA/DataSet --num_iter 15000 --tsub 20 --replicate_num 0 --lr 0.0001 --tnet_dim 2 --tnet_arch 100,100,100 --tnet_act elu --hnet_arch 200,200,200 --task_emb_dim 256 --explicit_time 1 --beta 0.005 --data_class LASA --eval_during_train 0 --seq_file datasets/LASA/lasa_sequence_all.txt --log_dir logs_clfd/lasa_explicit_time --plot_fs 10 --figw 16.0 --figh 3.3 --task_names_path datasets/LASA/lasa_names.json --seed 200 --description tr_hn_node_LASA_t1
 ```
 The complete set of commands for reproducing all our experiments can be found in [commands_LASA.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_LASA.txt) and [commands_HelloWorld.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_HelloWorld.txt).
 
