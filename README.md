@@ -4,9 +4,10 @@
 
 Methods for teaching motion skills to robots focus on training for a single skill at a time. Robots capable of learning from demonstration can considerably benefit from the added ability to learn new movements without forgetting past knowledge. To this end, we propose an approach for continual learning from demonstration using hypernetworks and neural ordinary differential equation solvers. We empirically demonstrate the effectiveness of our approach in remembering long sequences of trajectory learning tasks without the need to store any data from past demonstrations. Our results show that hypernetworks outperform other state-of-the-art regularization-based continual learning approaches for learning from demonstration. In our experiments, we use the popular LASA trajectory benchmark, and a new dataset of kinesthetic demonstrations that we introduce in our [paper](link/to/paper) called the *HelloWorld* dataset. We evaluate our approach using both trajectory error metrics and continual learning metrics, and we propose two new continual learning metrics. Our code, along with the newly collected dataset, is available in this repository.
 
-Here is a very short overview of our approach:
+Here is a very short overview of our approach (also available on [YouTube](https://youtu.be/cTfVfYyyeXk)):
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/cTfVfYyyeXk" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+https://user-images.githubusercontent.com/10401716/153514989-200eec00-d621-4915-a3ad-22ca3ddb4d8a.mp4
+
 
 ## HelloWorld Dataset
 *HelloWorld* is a dataset of demonstrations we collected using the Franka Emika Panda robot. The *x* and *y* coordinates of the robot's end-effector were recorded while a human user guided it kinesthetically to write the 7 lower-case letters *h,e,l,o,w,r,d* one at a time on a horizontal surface. The *HelloWorld* dataset  consists of 7 tasks, each containing 8 slightly varying demonstrations of a letter. Each demonstration is a sequence of 1000 2-D points. After training on all the tasks, the objective is to make the robot write the words *hello world*. Our motivation for using this dataset is to test our approach on trajectories with loops and to show that it also works on kinesthetically recorded demonstrations using a real robot.
