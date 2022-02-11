@@ -1,19 +1,21 @@
 # Continual Learning from Demonstration of Robotic Skills
 
-![Alt text](videos_images/helloworld_robot.gif?raw=true "Architectures")
+![Robot executing HelloWorld tasks](videos_images/helloworld_robot.gif?raw=true "Robot executing HelloWorld tasks")
 
 Methods for teaching motion skills to robots focus on training for a single skill at a time. Robots capable of learning from demonstration can considerably benefit from the added ability to learn new movements without forgetting past knowledge. To this end, we propose an approach for continual learning from demonstration using hypernetworks and neural ordinary differential equation solvers. We empirically demonstrate the effectiveness of our approach in remembering long sequences of trajectory learning tasks without the need to store any data from past demonstrations. Our results show that hypernetworks outperform other state-of-the-art regularization-based continual learning approaches for learning from demonstration. In our experiments, we use the popular LASA trajectory benchmark, and a new dataset of kinesthetic demonstrations that we introduce in our [paper](link/to/paper) called the *HelloWorld* dataset. We evaluate our approach using both trajectory error metrics and continual learning metrics, and we propose two new continual learning metrics. Our code, along with the newly collected dataset, is available in this repository.
 
 Here is a very short overview of our approach:
 
-https://user-images.githubusercontent.com/10401716/153514989-200eec00-d621-4915-a3ad-22ca3ddb4d8a.mp4
+<iframe width="560" height="315" src="https://www.youtube.com/embed/cTfVfYyyeXk" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
 ## HelloWorld Dataset
-*HelloWorld* is a dataset of demonstrations we collected using the Franka Emika Panda robot. The $x$ and $y$ coordinates of the robot's end-effector were recorded while a human user guided it kinesthetically to write the 7 lower-case letters *h,e,l,o,w,r,d* one at a time on a horizontal surface. The *HelloWorld* dataset  consists of 7 tasks, each containing 8 slightly varying demonstrations of a letter. Each demonstration is a sequence of 1000 2-D points. After training on all the tasks, the objective is to make the robot write the words *hello world*. Our motivation for using this dataset is to test our approach on complicated trajectories (with loops) and to show that it also works on kinesthetically recorded demonstrations using a real robot.
+*HelloWorld* is a dataset of demonstrations we collected using the Franka Emika Panda robot. The *x* and *y* coordinates of the robot's end-effector were recorded while a human user guided it kinesthetically to write the 7 lower-case letters *h,e,l,o,w,r,d* one at a time on a horizontal surface. The *HelloWorld* dataset  consists of 7 tasks, each containing 8 slightly varying demonstrations of a letter. Each demonstration is a sequence of 1000 2-D points. After training on all the tasks, the objective is to make the robot write the words *hello world*. Our motivation for using this dataset is to test our approach on trajectories with loops and to show that it also works on kinesthetically recorded demonstrations using a real robot.
 
 The data for each of the 7 tasks can be found as `.npy` files in the folder [`datasets/robot_hello_world/processed_demos`](datasets/robot_hello_world/processed_demos).
 
-## Setup Insrtuctions
+![HelloWorld_dataset](videos_images/HelloWorld_dataset.svg?raw=true "HelloWorld_dataset")
+
+## Setup Instructions
 
 ### Clone this repository
 ```
@@ -37,7 +39,7 @@ Here we show the command for training a NODE generating Hypernetwork
 
 python3 tr_hn_node.py --data_dir datasets/LASA/DataSet --num_iter 15000 --tsub 20 --replicate_num 0 --lr 0.0001 --tnet_dim 2 --tnet_arch 100,100,100 --tnet_act elu --hnet_arch 200,200,200 --task_emb_dim 256 --explicit_time 1 --beta 0.005 --data_class LASA --eval_during_train 0 --seq_file datasets/LASA/lasa_sequence_all.txt --log_dir logs/lasa_explicit_time --plot_fs 10 --figw 16.0 --figh 3.3 --task_names_path datasets/LASA/lasa_names.json --seed 200 --description tr_hn_node_LASA_t1
 ```
-The complete set of commands for reproducing all our experiments can be found in `commands_LASA.txt` and `commands_HelloWorld.txt`.
+The complete set of commands for reproducing all our experiments can be found in [commands_LASA.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_LASA.txt) and [commands_HelloWorld.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_HelloWorld.txt).
 
 ## View Trajectories Predicted by Trained Models
 
