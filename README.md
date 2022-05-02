@@ -73,3 +73,20 @@ Then run the notebook `predict_traj_saved_models.ipynb` for generating trajector
     2. [Notebook](https://colab.research.google.com/drive/1ygdXFuih_0sLA2HosQkaVQOA9v6BMSdj?usp=sharing) containing starter code for Neural ODEs by Çağatay Yıldız
     3. [ImitationFlow](https://github.com/TheCamusean/iflow)
     4. [Fast implementations of the Frechet distance](https://github.com/joaofig/discrete-frechet)
+
+## Citation
+
+If you use this code or our results in your research, please cite:
+
+```
+@misc{https://doi.org/10.48550/arxiv.2202.06843,
+  doi = {10.48550/ARXIV.2202.06843},
+  url = {https://arxiv.org/abs/2202.06843},
+  author = {Auddy, Sayantan and Hollenstein, Jakob and Saveriano, Matteo and Rodríguez-Sánchez, Antonio and Piater, Justus},
+  keywords = {Robotics (cs.RO), Machine Learning (cs.LG), FOS: Computer and information sciences, FOS: Computer and information sciences},
+  title = {Continual Learning from Demonstration of Robotic Skills},
+  publisher = {arXiv},
+  year = {2022},
+  copyright = {Creative Commons Attribution 4.0 International}
+}
+```
