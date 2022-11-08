@@ -6,7 +6,7 @@ Methods for teaching motion skills to robots focus on training for a single skil
 
 Here is a very short overview of our approach (also available on [YouTube](https://youtu.be/0gdIImIBnXc)):
 
-
+https://user-images.githubusercontent.com/10401716/200596280-efc48037-02a9-42e6-88e7-e8e926c0924f.mp4
 
 ## HelloWorld Dataset
 *HelloWorld* is a dataset of kinesthetic demonstrations we collected using the Franka Emika Panda robot. The *x* and *y* coordinates of the robot's end-effector were recorded while a human user guided it kinesthetically to write the 7 lower-case letters *h,e,l,o,w,r,d* one at a time on a horizontal surface. The *HelloWorld* dataset  consists of 7 tasks, each containing 8 slightly varying demonstrations of a letter. Each demonstration is a sequence of 1000 2-D points. After training on all the tasks, the objective is to make the robot write the words *hello world*. Our motivation for using this dataset is to test our approach on trajectories with loops and to show that it also works on kinesthetically recorded demonstrations using a real robot.
