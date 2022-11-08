@@ -2,21 +2,27 @@
 
 ![Robot executing HelloWorld tasks](videos_images/helloworld_robot.gif?raw=true "Robot executing HelloWorld tasks")
 
-Methods for teaching motion skills to robots focus on training for a single skill at a time. Robots capable of learning from demonstration can considerably benefit from the added ability to learn new movements without forgetting past knowledge. To this end, we propose an approach for continual learning from demonstration using hypernetworks and neural ordinary differential equation solvers. We empirically demonstrate the effectiveness of our approach in remembering long sequences of trajectory learning tasks without the need to store any data from past demonstrations. Our results show that hypernetworks outperform other state-of-the-art regularization-based continual learning approaches for learning from demonstration. In our experiments, we use the popular LASA trajectory benchmark, and a new dataset of kinesthetic demonstrations that we introduce in our [paper](https://arxiv.org/abs/2202.06843) called the *HelloWorld* dataset. We evaluate our approach using both trajectory error metrics and continual learning metrics, and we propose two new continual learning metrics. Our code, along with the newly collected dataset, is available in this repository.
+Methods for teaching motion skills to robots focus on training for a single skill at a time. Robots capable of learning from demonstration can considerably benefit from the added ability to learn new movement skills without forgetting what was learned in the past. To this end, we propose an approach for continual learning from demonstration using hypernetworks and neural ordinary differential equation solvers. We empirically demonstrate the effectiveness of this approach in remembering long sequences of trajectory learning tasks without the need to store any data from past demonstrations. Our results show that hypernetworks outperform other state-of-the-art continual learning approaches for learning from demonstration. In our experiments, we use the popular LASA benchmark, and two new datasets of kinesthetic demonstrations collected with a real robot that we introduce in our [paper](https://arxiv.org/abs/2202.06843) called the *HelloWorld* and *RoboTasks* datasets. We evaluate our approach on a physical robot and demonstrate its effectiveness in learning realistic robotic tasks involving changing positions as well as orientations. We report both trajectory error metrics and continual learning metrics, and we propose two new continual learning metrics. Our code, along with the newly collected datasets, is available in this repository.
 
-Here is a very short overview of our approach (also available on [YouTube](https://youtu.be/cTfVfYyyeXk)):
+Here is a very short overview of our approach (also available on [YouTube](https://youtu.be/0gdIImIBnXc)):
 
-https://user-images.githubusercontent.com/10401716/153514989-200eec00-d621-4915-a3ad-22ca3ddb4d8a.mp4
 
 
 ## HelloWorld Dataset
-*HelloWorld* is a dataset of demonstrations we collected using the Franka Emika Panda robot. The *x* and *y* coordinates of the robot's end-effector were recorded while a human user guided it kinesthetically to write the 7 lower-case letters *h,e,l,o,w,r,d* one at a time on a horizontal surface. The *HelloWorld* dataset  consists of 7 tasks, each containing 8 slightly varying demonstrations of a letter. Each demonstration is a sequence of 1000 2-D points. After training on all the tasks, the objective is to make the robot write the words *hello world*. Our motivation for using this dataset is to test our approach on trajectories with loops and to show that it also works on kinesthetically recorded demonstrations using a real robot.
+*HelloWorld* is a dataset of kinesthetic demonstrations we collected using the Franka Emika Panda robot. The *x* and *y* coordinates of the robot's end-effector were recorded while a human user guided it kinesthetically to write the 7 lower-case letters *h,e,l,o,w,r,d* one at a time on a horizontal surface. The *HelloWorld* dataset  consists of 7 tasks, each containing 8 slightly varying demonstrations of a letter. Each demonstration is a sequence of 1000 2-D points. After training on all the tasks, the objective is to make the robot write the words *hello world*. Our motivation for using this dataset is to test our approach on trajectories with loops and to show that it also works on kinesthetically recorded demonstrations using a real robot.
 
 The data for each of the 7 tasks can be found as `.npy` files in the folder [`datasets/robot_hello_world/processed_demos`](datasets/robot_hello_world/processed_demos).
 
 ![HelloWorld_dataset](videos_images/HelloWorld_dataset.svg?raw=true "HelloWorld_dataset")
 
 Please check the file `helloworld_dataset.ipynb` to see how to load this dataset. Code for using this dataset in the training loop can be found in the training scripts `tr_*_node.py` (e.g. `tr_hn_node.py`).
+
+## RoboTasks Dataset
+*RoboTasks* is a dataset of kinesthetic demonstrations of realistic robot tasks we collected using the Franka Emika Panda robot. Each task involves learning trajectories of the position (in 3D space) as well as the orientation (in all 3 rotation axes) of the robot's end-effector. The tasks of this dataset are: 
+- *box opening*: the lid of a box is lifted to an open position;
+- *bottle shelving*: a bottle in a vertical position is transferred to a horizontal position on a shelf.
+- *plate stacking*: a plate in a vertical position is transferred to a horizontal position on an elevated platform while orienting the arm so as to avoid the blocks used for holding the plate in its initial vertical position;
+- *pouring*: a cup full of coffee beans is taken from an elevated platform and the contents of the cup are emptied into a container.
 
 ## Code Instructions
 
@@ -65,7 +71,7 @@ Then run the notebook `predict_traj_saved_models.ipynb` for generating trajector
 
 ## Acknowledgements
 
-- A big thank you to [Hector Villeda](https://iis.uibk.ac.at/people) for helping with the data collection and robot experiments.
+- A big thank you to [Hector Villeda](https://iis.uibk.ac.at/people) for helping with the data collection and robot experiments for the *HelloWorld* dataset.
 
 - We gratefully acknowlege these openly accessible repositories which were a great help in writing the code for our experiments:
 
