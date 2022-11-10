@@ -19,10 +19,12 @@ Please check the file `helloworld_dataset.ipynb` to see how to load this dataset
 
 ## RoboTasks Dataset
 *RoboTasks* is a dataset of kinesthetic demonstrations of realistic robot tasks we collected using the Franka Emika Panda robot. Each task involves learning trajectories of the position (in 3D space) as well as the orientation (in all 3 rotation axes) of the robot's end-effector. The tasks of this dataset are: 
-- *box opening*: the lid of a box is lifted to an open position;
-- *bottle shelving*: a bottle in a vertical position is transferred to a horizontal position on a shelf.
-- *plate stacking*: a plate in a vertical position is transferred to a horizontal position on an elevated platform while orienting the arm so as to avoid the blocks used for holding the plate in its initial vertical position;
-- *pouring*: a cup full of coffee beans is taken from an elevated platform and the contents of the cup are emptied into a container.
+- Task 0 - *box opening*: the lid of a box is lifted to an open position;
+- Task 1 - *bottle shelving*: a bottle in a vertical position is transferred to a horizontal position on a shelf.
+- Task 2 - *plate stacking*: a plate in a vertical position is transferred to a horizontal position on an elevated platform while orienting the arm so as to avoid the blocks used for holding the plate in its initial vertical position;
+- Task 3 - *pouring*: a cup full of coffee beans is taken from an elevated platform and the contents of the cup are emptied into a container.
+
+The data for each of the 4 tasks can be found as `.npy` files in the folder [`datasets/robottasks/pos_ori`](datasets/robottasks/pos_ori). Upon loading the data (of each task), we get a numpy array of shape `[num_demos=9, trajectory_length=1000, data_dimension=7]`. A data point consists of 7 elements: `px,py,pz,qw,qx,qy,qz` (3D position followed by quaternions in the scalar first format). This represents the position and orientation of the end-effector at each point of a trajectory.
 
 ![Collecting demos for the RoboTasks dataset](videos_images/robotasks_cropped.gif?raw=true "Collecting demos for the RoboTasks dataset")
 
