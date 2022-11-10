@@ -24,6 +24,8 @@ Please check the file `helloworld_dataset.ipynb` to see how to load this dataset
 - *plate stacking*: a plate in a vertical position is transferred to a horizontal position on an elevated platform while orienting the arm so as to avoid the blocks used for holding the plate in its initial vertical position;
 - *pouring*: a cup full of coffee beans is taken from an elevated platform and the contents of the cup are emptied into a container.
 
+![Collecting demos for the RoboTasks dataset](videos_images/robotasks.gif?raw=true "Collecting demos for the RoboTasks dataset")
+
 ## Code Instructions
 
 ### Clone this repository
