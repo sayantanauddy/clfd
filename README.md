@@ -3,10 +3,14 @@
 Methods for teaching motion skills to robots focus on training for a single skill at a time. Robots capable of learning from demonstration can considerably benefit from the added ability to learn new movement skills without forgetting what was learned in the past. To this end, we propose an approach for continual learning from demonstration using hypernetworks and neural ordinary differential equation solvers. We empirically demonstrate the effectiveness of this approach in remembering long sequences of trajectory learning tasks without the need to store any data from past demonstrations. Our results show that hypernetworks outperform other state-of-the-art continual learning approaches for learning from demonstration. In our experiments, we use the popular LASA benchmark, and two new datasets of kinesthetic demonstrations collected with a real robot that we introduce in our [paper](https://arxiv.org/abs/2202.06843) called the *HelloWorld* and *RoboTasks* datasets. We evaluate our approach on a physical robot and demonstrate its effectiveness in learning realistic robotic tasks involving changing positions as well as orientations. We report both trajectory error metrics and continual learning metrics, and we propose two new continual learning metrics. Our code, along with the newly collected datasets, is available in this repository.
 
 <p float="center">
-  <img src="videos_images/helloworld_robot_cropped.gif" width="400" />
-  <img src="videos_images/robotasks_pred_cropped2.gif" width="365" /> 
-  <figcaption>(left): After learning one letter at a time, the robot can reproduce all letters from the HelloWorld dataset.<br>
-  (right): The robot is able to reproduce any task after sequentially learning the four tasks of the RoboTasks dataset.</figcaption>
+  <img src="videos_images/helloworld_robot_cropped.gif" width="600" />
+  <figcaption>Fig. 1: After learning one letter at a time with the same model, the robot can reproduce all letters from the HelloWorld dataset.
+  </figcaption>
+</p>
+
+<p float="center">
+  <img src="videos_images/robotasks_pred_cropped2.gif" width="600" /> 
+  <figcaption>Fig. 2: The robot is able to reproduce any task after continually learning the four realistic tasks of the RoboTasks dataset (each task involves changing positions and orientations).</figcaption>
 </p>
 
 
@@ -19,7 +23,13 @@ https://user-images.githubusercontent.com/10401716/200596280-efc48037-02a9-42e6-
 
 The data for each of the 7 tasks can be found as `.npy` files in the folder [`datasets/robot_hello_world/processed_demos`](datasets/robot_hello_world/processed_demos).
 
-![HelloWorld_dataset](videos_images/HelloWorld_dataset.svg?raw=true "HelloWorld_dataset")
+<p float="center">
+  <img src="videos_images/HelloWorld_dataset.svg" width="600" /> 
+  <figcaption>
+Fig. 3: Tasks of the HelloWorld dataset.
+</figcaption>
+</p>
+
 
 Please check the file `helloworld_dataset.ipynb` to see how to load this dataset. Code for using this dataset in the training loop can be found in the training scripts `tr_*_node.py` (e.g. `tr_hn_node.py`).
 
@@ -32,7 +42,12 @@ Please check the file `helloworld_dataset.ipynb` to see how to load this dataset
 
 The data for each of the 4 tasks can be found as `.npy` files in the folder [`datasets/robottasks/pos_ori`](datasets/robottasks/pos_ori). Upon loading the data (of each task), we get a numpy array of shape `[num_demos=9, trajectory_length=1000, data_dimension=7]`. A data point consists of 7 elements: `px,py,pz,qw,qx,qy,qz` (3D position followed by quaternions in the scalar first format). This represents the position and orientation of the end-effector at each point of a trajectory.
 
-![Collecting demos for the RoboTasks dataset](videos_images/robotasks_cropped.gif?raw=true "Collecting demos for the RoboTasks dataset")
+<p float="center">
+  <img src="videos_images/robotasks_cropped.gif" width="600" /> 
+  <figcaption>
+Fig. 3: Collecting demos for the RoboTasks dataset.
+</figcaption>
+</p>
 
 ## Code Instructions
 
