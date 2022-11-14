@@ -1,10 +1,14 @@
 # Continual Learning from Demonstration of Robotic Skills
 
-![Robot executing HelloWorld tasks](videos_images/helloworld_robot.gif?raw=true "Robot executing HelloWorld tasks")
-
-![Robot executing tasks from RoboTasks ](videos_images/robotasks_pred_cropped.gif?raw=true "Robot executing tasks from RoboTasks")
-
 Methods for teaching motion skills to robots focus on training for a single skill at a time. Robots capable of learning from demonstration can considerably benefit from the added ability to learn new movement skills without forgetting what was learned in the past. To this end, we propose an approach for continual learning from demonstration using hypernetworks and neural ordinary differential equation solvers. We empirically demonstrate the effectiveness of this approach in remembering long sequences of trajectory learning tasks without the need to store any data from past demonstrations. Our results show that hypernetworks outperform other state-of-the-art continual learning approaches for learning from demonstration. In our experiments, we use the popular LASA benchmark, and two new datasets of kinesthetic demonstrations collected with a real robot that we introduce in our [paper](https://arxiv.org/abs/2202.06843) called the *HelloWorld* and *RoboTasks* datasets. We evaluate our approach on a physical robot and demonstrate its effectiveness in learning realistic robotic tasks involving changing positions as well as orientations. We report both trajectory error metrics and continual learning metrics, and we propose two new continual learning metrics. Our code, along with the newly collected datasets, is available in this repository.
+
+<p float="center">
+  <img src="videos_images/helloworld_robot_cropped.gif" width="400" />
+  <img src="videos_images/robotasks_pred_cropped2.gif" width="365" /> 
+  <figcaption>(left): After learning one letter at a time, the robot can reproduce all letters from the HelloWorld dataset.<br>
+  (right): The robot is able to reproduce any task after sequentially learning the four tasks of the RoboTasks dataset.</figcaption>
+</p>
+
 
 Here is a very short overview of our approach (also available on [YouTube](https://youtu.be/0gdIImIBnXc)):
 
@@ -53,15 +57,31 @@ Here we show the command for training a Hypernetwork that generates a NODE:
 # DATASET: LASA
 # NODE TYPE: NODE^T (with time input)
 
-python3 tr_hn_node.py --data_dir datasets/LASA/DataSet --num_iter 15000 --tsub 20 --replicate_num 0 --lr 0.0001 --tnet_dim 2 --tnet_arch 100,100,100 --tnet_act elu --hnet_arch 200,200,200 --task_emb_dim 256 --explicit_time 1 --beta 0.005 --data_class LASA --eval_during_train 0 --seq_file datasets/LASA/lasa_sequence_all.txt --log_dir logs_clfd/lasa_explicit_time --plot_fs 10 --figw 16.0 --figh 3.3 --task_names_path datasets/LASA/lasa_names.json --seed 200 --description tr_hn_node_LASA_t1
+python3 tr_hn_node.py --data_dir datasets/LASA/DataSet --num_iter 15000 --tsub 20 --replicate_num 0 --lr 0.0001 --tnet_dim 2 --tnet_arch 100,100,100 --tnet_act elu --hnet_arch 200,200,200 --task_emb_dim 256 --explicit_time 1 --beta 0.005 --data_class LASA --eval_during_train 0 --seq_file datasets/LASA/lasa_sequence_all.txt --log_dir logs_clfd/lasa_explicit_time --plot_fs 10 --figw 16.0 --figh 3.3 --seed 200 --description tr_hn_node_LASA_t1
 ```
-The complete set of commands for reproducing all our experiments can be found in [commands_LASA.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_LASA.txt) and [commands_HelloWorld.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_HelloWorld.txt).
-
 
 ### Reproducing results
-To reproduce the results from our experiments, use the commands from [commands_LASA.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_LASA.txt) and [commands_HelloWorld.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_HelloWorld.txt). 
+The complete set of commands for reproducing all our experiments can be found in [commands_LASA.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_LASA.txt),  [commands_HelloWorld.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_HelloWorld.txt), and [commands_RoboTasks.txt](https://github.com/sayantanauddy/clfd/blob/main/commands_RoboTasks.txt).
 
-Once all the training scripts have completed executing and all log files have been generated in the folder `logs_clfd`, generate plots using the notebook `generate_plots.ipynb`.
+Log files are generated in the folder `logs_clfd` in the following structure:
+```bash
+logs_clfd
+├── lasa_explicit_time
+│   ├── tr_hn_node_LASA_t1
+│   │   ├── 211123_190744_seed200
+│   │   │   ├── commandline_args.json
+│   │   │   ├── eval_results.json
+│   │   │   ├── log.log
+│   │   │   ├── models
+│   │   │   │   └── hnet_25.pth
+│   │   │   └── plot_trajectories_tr_hn_node_LASA_t1.pdf
+```
+Description of generated log files:
+ - `commandline_args.json`: Contains the command line arguments used for running the training script.
+ - `eval_results.json`: JSON file containing the evaluation results. For each task, evaluation is carried out for that task and all previous tasks.
+ - `log.log`: Screen dump of the training run.
+ - `models/`: Folder containing the trained model (in most cases only the final model is saved after all tasks are learned).
+ - `plot_trajectories_tr_hn_node_LASA_t1.pdf`: A plot of the trajectories (of all previous tasks) predicted by the last model after all tasks are learned. This file is created only for the LASA and HelloWorld datasets.
 
 ### View Trajectories Predicted by Trained Models
 
@@ -77,7 +97,7 @@ Then run the notebook `predict_traj_saved_models.ipynb` for generating trajector
 
 ## Acknowledgements
 
-- A big thank you to [Hector Villeda](https://iis.uibk.ac.at/people) for helping with the data collection and robot experiments for the *HelloWorld* dataset.
+- Thanks to [Hector Villeda](https://iis.uibk.ac.at/people) for helping with the data collection and robot experiments for the *HelloWorld* dataset.
 
 - We gratefully acknowlege these openly accessible repositories which were a great help in writing the code for our experiments:
 
