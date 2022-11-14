@@ -3,15 +3,14 @@ from tqdm import trange
 from argparse import ArgumentParser
 import logging
 import matplotlib.pyplot as plt
+import numpy as np
 
 import torch
 import torch.optim as optim
 
-from tensorboardX import SummaryWriter
-
 from imitation_cl.train.utils import check_cuda, set_seed, get_sequence
-from imitation_cl.model.hypernetwork import HyperNetwork, TargetNetwork, str_to_ints, str_to_act, get_current_targets, calc_delta_theta, calc_fix_target_reg
-from imitation_cl.model.node import NODE
+from imitation_cl.model.hypernetwork import TargetNetwork, str_to_ints, str_to_act
+from imitation_cl.model.node import NODETaskEmbedding
 from imitation_cl.data.lasa import LASA, LASAExtended
 from imitation_cl.data.helloworld import HelloWorld
 from imitation_cl.data.robottasks import RobotTasksPosition, RobotTasksOrientation
@@ -38,17 +37,10 @@ def parse_args(return_parser=False):
     parser.add_argument('--tnet_dim', type=int, default=2, help='Dimension of target network input and output')
     parser.add_argument('--tnet_arch', type=str, default='200,200,200', help='Hidden layer units of the target network')
     parser.add_argument('--tnet_act', type=str, default='elu', help='Target network activation function')
-    parser.add_argument('--hnet_arch', type=str, default='200,200,200', help='Hidden layer units of the hypernetwork')
     parser.add_argument('--task_emb_dim', type=int, default=5, help='Dimension of the task embedding vector')
     parser.add_argument('--explicit_time', type=int, default=0, help='1: Use time as an explicit network input, 1: Do not use time')
 
     parser.add_argument('--int_method', type=str, default='dopri5', help='Integration method')
-
-    # Additional hyperparameters
-    parser.add_argument('--optimizer', type=str, default='Adam', help='Type of optimizer to use (Adam or AdamW')
-    parser.add_argument('--dropout', type=float, default=-1.0, help='Dropout rate. -1.0 means no dropout')
-
-    parser.add_argument('--beta', type=float, default=5e-3, help='Regularization strength')
 
     parser.add_argument('--data_class', type=str, required=True, help='Dataset class for training')
     parser.add_argument('--eval_during_train', type=int, default=0, help='0: net for a task is evaluated immediately after training, 1: eval for all nets is done after training of all tasks')
@@ -56,6 +48,9 @@ def parse_args(return_parser=False):
     parser.add_argument('--seq_file', type=str, required=True, help='Name of file containing sequence of demonstration files')
     parser.add_argument('--log_dir', type=str, default='logs/', help='Main directory for saving logs')
     parser.add_argument('--description', type=str, required=True, help='String identifier for experiment')
+
+    # Training iteration multiplier
+    parser.add_argument('--train_iter_multiplier', type=float, default=1.0)
 
     # Old (data in mat files) or new (data in numpy archives) data loading process
     parser.add_argument('--data_type', type=str, default='mat', help='Type of data to load from - mat: mat files, np: numpy archives')
@@ -73,10 +68,7 @@ def parse_args(return_parser=False):
     parser.add_argument('--plot_fs', type=int, default=10, help='Fontsize to be used in the plots')
     parser.add_argument('--figw', type=float, default=16.0, help='Plot width')
     parser.add_argument('--figh', type=float, default=3.3, help='Plot height')
-
-    # Delete models for past tasks
-    parser.add_argument('--del_models', type=int, default=1, help='0: Do not delete, 1: Delete')
-
+    #parser.add_argument('--task_names_path', type=str, required=True, help='Path of the JSON file with task names used in plot')
 
     if return_parser:
         # This is used by the slurm creator script
@@ -86,92 +78,91 @@ def parse_args(return_parser=False):
         args = parser.parse_args()
         return args
 
-def train_task(args, task_id, hnet, tnet, node, device, writer=None):
+def train_task(args, task_id, tnet, node, device):
 
     filenames = get_sequence(args.seq_file)
 
-    data = None
-    if args.data_class == 'LASA':
-        if args.data_type == 'mat':
-            data = LASA(data_dir=args.data_dir, filename=filenames[task_id], replicate_num=args.replicate_num)
-        elif args.data_type == 'np':
-            datafile = os.path.join(args.data_dir, filenames[task_id])
-            data = LASAExtended(datafile, seq_len=args.tsub, norm=True, device=device)
+    # Store data for all tasks till now
+    datasets = list()
+    for t in range(task_id+1):
+
+        data = None
+        if args.data_class == 'LASA':
+            if args.data_type == 'mat':
+                data = LASA(data_dir=args.data_dir, filename=filenames[t], replicate_num=args.replicate_num)
+            elif args.data_type == 'np':
+                datafile = os.path.join(args.data_dir, filenames[t])
+                data = LASAExtended(datafile, seq_len=args.tsub, norm=True, device=device)
+            else:
+                raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
+        elif args.data_class == 'HelloWorld':
+            data = HelloWorld(data_dir=args.data_dir, filename=filenames[t])
+        elif args.data_class == 'RobotTasksPosition':
+            if args.data_type == 'np':
+                data = RobotTasksPosition(data_dir=args.data_dir, datafile=filenames[t], device=device)
+            else:
+                raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
+        elif args.data_class == 'RobotTasksOrientation':
+            if args.data_type == 'np':
+                data = RobotTasksOrientation(data_dir=args.data_dir, datafile=filenames[t], device=device, scale=args.tangent_vec_scale)
+            else:
+                raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
         else:
-            raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
-    elif args.data_class == 'HelloWorld':
-        data = HelloWorld(data_dir=args.data_dir, filename=filenames[task_id])
-    elif args.data_class == 'RobotTasksPosition':
-        if args.data_type == 'np':
-            data = RobotTasksPosition(data_dir=args.data_dir, datafile=filenames[task_id], device=device)
-        else:
-            raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
-    elif args.data_class == 'RobotTasksOrientation':
-        if args.data_type == 'np':
-            data = RobotTasksOrientation(data_dir=args.data_dir, datafile=filenames[task_id], device=device, scale=args.tangent_vec_scale)
-        else:
-            raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
-    else:
-        raise NotImplementedError(f'Unknown dataset class {args.data_class}')
+            raise NotImplementedError(f'Unknown dataset class {args.data_class}')
+
+        # Append the dataset for task t
+        datasets.append(data)
 
     node.set_target_network(tnet)
 
+    # node.set_task_id(task_id)
+
     tnet.train()
-    hnet.train()
     node.train()
 
     # Create a new task embedding for this task
-    hnet.gen_new_task_emb()
-
-    tnet = tnet.to(device)
-    hnet = hnet.to(device)
+    node.gen_new_task_emb()
     node = node.to(device)
 
-    # Get the parameters generated by the hnet for all tasks
-    # preceeding the current task_id. This will be used for 
-    # calculating the regularized targets.
-    if args.beta > 0:
-        targets = get_current_targets(task_id, hnet)
+    # For optimizing the weights and biases of the NODE
+    theta_optimizer = optim.Adam(node.target_network.weights, lr=args.lr)
+    
+    # For optimizing the task embedding 
+    # We have a list of task embeddings, all of which will be optimized
+    # In each iteration in the training loop, a task_emb vector is selected
+    # based on the task ID and optimized
+    emb_optimizers = list()
+    for t in range(task_id+1):
+        emb_optimizer = optim.Adam([node.get_task_emb(t)], lr=args.lr)
+        emb_optimizers.append(emb_optimizer)
 
-    # Trainable weights and biases of the hnet
-    regularized_params = list(hnet.theta)
-         
-    # For optimizing the weights and biases of the hnet
-    if args.optimizer == 'Adam':
-        theta_optimizer = optim.Adam(regularized_params, lr=args.lr)
-    elif args.optimizer == 'AdamW':
-        theta_optimizer = optim.AdamW(regularized_params, lr=args.lr)
-    else:
-        raise NotImplementedError(f'Unknown optimizer {args.optimizer}')
-
-    # For optimizing the task embedding for the current task.
-    # We only optimize the task embedding corresponding to the current task,
-    # the remaining ones stay constant.
-    if args.optimizer == 'Adam':
-        emb_optimizer = optim.Adam([hnet.get_task_emb(task_id)], lr=args.lr)
-    elif args.optimizer == 'AdamW':
-        emb_optimizer = optim.AdamW([hnet.get_task_emb(task_id)], lr=args.lr)
-    else:
-        raise NotImplementedError(f'Unknown optimizer {args.optimizer}')
-
-    # Whether the regularizer will be computed during training?
-    calc_reg = task_id > 0 and args.beta > 0
+    # Calculate the number of training iterations
+    # This should depend on the number of tasks
+    # When train_iter_multiplier=1.0, if task 0 has N iters, task 1 has 2N iters, task 2 has 3N iters and so on
+    # When train_iter_multiplier=0.1, if task 0 has N iters, task 1 has 1.1N iters, task 2 has 1.2N iters and so on
+    replay_train_iters = args.num_iter + np.rint(args.num_iter*task_id*args.train_iter_multiplier).astype(int)
 
     # Start training iterations
-    for training_iters in trange(args.num_iter):
+    for training_iters in trange(replay_train_iters):
 
-        ### Train theta and task embedding
+        # Select a task ID randomly for this iteration
+        iter_task_id = np.random.randint(low=0, high=(task_id+1))
+
+        # Set the selected task ID in the NODE
+        node.set_task_id(iter_task_id)
+
+        # Select the emb_optimizer for this iteration
+        emb_optimizer = emb_optimizers[iter_task_id]
+
+        # Select the dataset for this iteration
+        data = datasets[iter_task_id]
+
+        ### Train theta and task embedding.
         theta_optimizer.zero_grad()
         emb_optimizer.zero_grad()
 
-        # Generate parameters of the target network for the current task
-        weights = hnet.forward(task_id)
-
-        # Set the weights of the target network
-        tnet.set_weights(weights)
-
         # Set the target network in the NODE
-        node.set_target_network(tnet)
+        #node.set_target_network(tnet)
 
         if args.data_type == 'mat':
             t, y_all = get_minibatch(data.t[0], data.pos, tsub=args.tsub)
@@ -193,66 +184,23 @@ def train_task(args, task_id, hnet, tnet, node, device, writer=None):
         # MSE
         loss = ((y_hat-y_all)**2).mean()
 
-        # Log the loss in tensorboard
-        if writer is not None:
-            writer.add_scalar(f'task_loss/task_{task_id}', loss.item(), training_iters)
-
         # Calling loss_task.backward computes the gradients w.r.t. the loss for the 
         # current task. 
-        # Here we keep dtheta fixed, hence we do not need to create a graph of the derivatives
-        # and so create_graph=False
-        # The graph needs to be preserved only when the regulation loss is to be backpropagated
-        # and so retain_graph is True only when calc_reg is True
-        loss.backward(retain_graph=calc_reg, create_graph=False)
+        loss.backward()
 
         # The task embedding is only trained on the task-specific loss.
-        # Note, the gradients accumulated so far are from "loss_task".
         emb_optimizer.step()
 
-        # Initialize the regularization loss
-        loss_reg = 0
-
-        # Initialize dTheta, the candidate change in the hnet parameters
-        dTheta = None
-
-        if calc_reg:
-
-            # Find out the candidate change (dTheta) in trainable parameters (theta) of the hnet
-            # This function just computes the change (dTheta), but does not apply it
-            dTheta = calc_delta_theta(theta_optimizer,
-                                      False, 
-                                      lr=args.lr,
-                                      detach_dt=True)
-
-            # Calculate the regularization loss using dTheta
-            # This implements the second part of equation 2
-            loss_reg = calc_fix_target_reg(hnet, 
-                                           task_id,
-                                           targets=targets, 
-                                           dTheta=dTheta)
-
-            # Multiply the regularization loss with the scaling factor
-            loss_reg *= args.beta
-
-            # Log the loss in tensorboard
-            if writer is not None:
-                writer.add_scalar(f'reg_loss/task_{task_id}', loss_reg.item(), training_iters)
-
-            # Backpropagate the regularization loss
-            loss_reg.backward()
-
-        # Update the hnet params using the current task loss and the regularization loss
+        # Update the NODE params
         theta_optimizer.step()
 
-    return hnet, tnet, node
+    return tnet, node
 
-def eval_task(args, task_id, hnet, tnet, node, device, writer=None):
+def eval_task(args, task_id, tnet, node, device):
 
-    hnet.eval()
     tnet.eval()
 
     tnet = tnet.to(device)
-    hnet = hnet.to(device)
     node = node.to(device)
 
     filenames = get_sequence(args.seq_file)
@@ -280,12 +228,6 @@ def eval_task(args, task_id, hnet, tnet, node, device, writer=None):
             raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
     else:
         raise NotImplementedError(f'Unknown dataset class {args.data_class}')
-
-    # Generate parameters of the target network for the current task
-    weights = hnet.forward(task_id)
-
-    # Set the weights of the target network
-    tnet.set_weights(weights)
 
     # Set the target network in the NODE
     node.set_target_network(tnet)
@@ -327,7 +269,7 @@ def eval_task(args, task_id, hnet, tnet, node, device, writer=None):
 
     # De-normalize the data before computing trajectories
     y_all_np = data.unnormalize(y_all_np)
-    y_hat_np = data.unnormalize(y_hat_np)    
+    y_hat_np = data.unnormalize(y_hat_np)
 
     if args.data_class == 'RobotTasksOrientation':
         # Convert predicted trajectory from tangent vectors to quaternions
@@ -339,7 +281,6 @@ def eval_task(args, task_id, hnet, tnet, node, device, writer=None):
         eval_traj_metrics = {'quat_error': metric_quat_err}
         eval_traj_metric_errors = {'quat_error': metric_quat_errs.tolist()}
     else:
-        # Calculate trajectory metrics
         metric_swept_err, metric_swept_errs = mean_swept_error(y_all_np, y_hat_np)
         metric_frechet_err, metric_frechet_errs = mean_frechet_error(y_all_np, y_hat_np)
         metric_dtw_err, metric_dtw_errs = dtw_distance(y_all_np, y_hat_np)
@@ -360,43 +301,24 @@ def eval_task(args, task_id, hnet, tnet, node, device, writer=None):
 
     return eval_traj_metrics, eval_traj_metric_errors, plot_data
 
-
 def train_all(args):
 
     # Create logging folder and set up console logging
     save_dir, identifier = custom_logging_setup(args)
 
-    # Tensorboard logging setup
-    writer = SummaryWriter(log_dir=os.path.join(save_dir, 'tb', args.description, identifier))
-
     # Check if cuda is available
     cuda_available, device = check_cuda()
     logging.info(f'cuda_available: {cuda_available}')
         
-
-    # Shapes of the target network parameters
-    target_shapes = TargetNetwork.weight_shapes(n_in=args.tnet_dim+args.explicit_time, 
-                                                n_out=args.tnet_dim, 
-                                                hidden_layers=str_to_ints(args.tnet_arch), 
-                                                use_bias=True)
-
-    # Create the hypernetwork
-    hnet = HyperNetwork(layers=str_to_ints(args.hnet_arch), 
-                        te_dim=args.task_emb_dim, 
-                        target_shapes=target_shapes,
-                        dropout_rate=args.dropout,
-                        device=device).to(device)
-        
-    # Create a target network without parameters
-    # Parameters are supplied during the forward pass of the hypernetwork
-    tnet = TargetNetwork(n_in=args.tnet_dim+args.explicit_time, 
+    # Create a target network with parameters
+    tnet = TargetNetwork(n_in=args.tnet_dim+args.task_emb_dim+args.explicit_time, 
                          n_out=args.tnet_dim, 
                          hidden_layers=str_to_ints(args.tnet_arch),
                          activation_fn=str_to_act(args.tnet_act), 
                          use_bias=True, 
-                         no_weights=True,
+                         no_weights=False,
                          init_weights=None, 
-                         dropout_rate=-1,  # Dropout is only used for hnet
+                         dropout_rate=-1, 
                          use_batch_norm=False, 
                          bn_track_stats=False,
                          distill_bn_stats=False, 
@@ -405,8 +327,9 @@ def train_all(args):
 
     # The NODE uses the target network as the RHS of its
     # differential equation
-    # Apart from this, the NODE has no other trainable parameters
-    node = NODE(tnet, explicit_time=args.explicit_time, method=args.int_method).to(device)
+    # In addition this NODE has a trainable task embedding vector,
+    # one for each task
+    node = NODETaskEmbedding(tnet, args.task_emb_dim, args.explicit_time, method=args.int_method).to(device)
 
     # Extract the list of demonstrations from the text file 
     # containing the sequence of demonstrations
@@ -421,18 +344,17 @@ def train_all(args):
         logging.info(f'#### Training started for task_id: {task_id} (task {task_id+1} out of {num_tasks}) ###')
 
         # Train on the current task_id
-        hnet, tnet, node = train_task(args, task_id, hnet, tnet, node, device, writer=writer)
+        tnet, node = train_task(args, task_id, tnet, node, device)
 
         # At the end of every task store the latest networks
         logging.info('Saving models')
-        torch.save(hnet, os.path.join(save_dir, 'models', f'hnet_{task_id}.pth'))
         torch.save(tnet, os.path.join(save_dir, 'models', f'tnet_{task_id}.pth'))
         torch.save(node, os.path.join(save_dir, 'models', f'node_{task_id}.pth'))
 
         if args.eval_during_train == 0:
             # Evaluate the latest network immediately after training
             # is complete for a task
-            eval_resuts = eval_during_train(args, save_dir, task_id, eval_resuts, writer)
+            eval_resuts = eval_during_train(args, save_dir, task_id, eval_resuts)
         elif args.eval_during_train == 1:
             # Evaluation is done after training is finished for all tasks
             pass
@@ -442,13 +364,11 @@ def train_all(args):
         else:
             raise NotImplementedError(f'Unknown arg eval_during_train: {args.eval_during_train}')
 
-    logging.info('Training done')
-
-    writer.close()
+    logging.info('Done')
 
     return save_dir
 
-def eval_during_train(args, save_dir, train_task_id, eval_results=None, writer=None):
+def eval_during_train(args, save_dir, train_task_id, eval_results=None):
     """
     Evaluates one saved model after training for 
     that task is complete.
@@ -473,29 +393,15 @@ def eval_during_train(args, save_dir, train_task_id, eval_results=None, writer=N
         # For storing the evaluation results
         eval_results['data'] = {'metrics': dict(), 'metric_errors': dict()}
 
-    # Shapes of the target network parameters
-    target_shapes = TargetNetwork.weight_shapes(n_in=args.tnet_dim+args.explicit_time, 
-                                                n_out=args.tnet_dim, 
-                                                hidden_layers=str_to_ints(args.tnet_arch), 
-                                                use_bias=True)
-
-    # Create the hypernetwork
-    hnet = HyperNetwork(layers=str_to_ints(args.hnet_arch), 
-                        te_dim=args.task_emb_dim, 
-                        target_shapes=target_shapes,
-                        dropout_rate=args.dropout,
-                        device=device).to(device)
-        
-    # Create a target network without parameters
-    # Parameters are supplied during the forward pass of the hypernetwork
-    tnet = TargetNetwork(n_in=args.tnet_dim+args.explicit_time, 
+    # Create a target network with parameters
+    tnet = TargetNetwork(n_in=args.tnet_dim+args.task_emb_dim+args.explicit_time, 
                          n_out=args.tnet_dim, 
                          hidden_layers=str_to_ints(args.tnet_arch),
                          activation_fn=str_to_act(args.tnet_act), 
                          use_bias=True, 
-                         no_weights=True,
+                         no_weights=False,
                          init_weights=None, 
-                         dropout_rate=-1,  # Dropout is only used for hnet 
+                         dropout_rate=-1, 
                          use_batch_norm=False, 
                          bn_track_stats=False,
                          distill_bn_stats=False, 
@@ -504,8 +410,7 @@ def eval_during_train(args, save_dir, train_task_id, eval_results=None, writer=N
 
     # The NODE uses the target network as the RHS of its
     # differential equation
-    # Apart from this, the NODE has no other trainable parameters
-    node = NODE(tnet, explicit_time=args.explicit_time, method=args.int_method).to(device)
+    node = NODETaskEmbedding(tnet, args.task_emb_dim, args.explicit_time, method=args.int_method).to(device)
 
     # Extract the list of demonstrations from the text file 
     # containing the sequence of demonstrations
@@ -535,7 +440,6 @@ def eval_during_train(args, save_dir, train_task_id, eval_results=None, writer=N
     eval_results['data']['metric_errors'][f'train_task_{train_task_id}'] = dict()
 
     # Load the networks for the current task_id
-    hnet = torch.load(os.path.join(save_dir, 'models', f'hnet_{train_task_id}.pth'))
     tnet = torch.load(os.path.join(save_dir, 'models', f'tnet_{train_task_id}.pth'))
     node = torch.load(os.path.join(save_dir, 'models', f'node_{train_task_id}.pth'))
 
@@ -543,21 +447,36 @@ def eval_during_train(args, save_dir, train_task_id, eval_results=None, writer=N
     for eval_task_id in range(train_task_id+1):
         logging.info(f'Loaded network trained on task {train_task_id}, evaluating on task {eval_task_id}')
 
+        node.set_task_id(eval_task_id)
+
         # Figure is plotted only for the last task
         
-        eval_traj_metrics, eval_traj_metric_errors, plot_data = eval_task(args, eval_task_id, hnet, tnet, node, device, writer)
+        # FIXME Dirty hack to handle an unimportant problem
+        # During evaluation, sometimes the predictions for the finetuned model are so bad
+        # that the ODE solver (odeint function) gives the following error:
+        # AssertionError: underflow in dt nan
+        # The FT model is just a lower baseline and so if this exception occurs
+        # We simply set the evaluated metrics to the value of the latest metrics
+        # and carry on
+        try:
+            eval_traj_metrics, eval_traj_metric_errors, plot_data = eval_task(args, eval_task_id, tnet, node, device)
+        except AssertionError as e:
+            logging.info(f'Caught exception {e}')
 
         # Plot the trajectories for the last trained model
         if train_task_id == (num_tasks-1) and args.plot_traj==1:
+
+            # Read the task names to use in the plot
+            # task_names_map = read_dict(args.task_names_path)
 
             r = 1 if num_tasks<=10 else eval_task_id//(num_tasks//2)
             c = eval_task_id if num_tasks<=10 else eval_task_id%(num_tasks//2)
             t, y_all, ode_rhs, y_hat = plot_data
             ax = axes[c] if num_tasks<=10 else axes[r][c]
             handles, labels = plot_ode_simple(t, y_all, ode_rhs, y_hat, ax=ax, explicit_time=args.explicit_time, plot_vectorfield=args.plot_vectorfield)
-
+            # name = list(task_names_map.values())[eval_task_id]
             ax.set_title(eval_task_id, fontsize=args.plot_fs)
-            
+
             # Remove axis labels and ticks
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
@@ -584,8 +503,7 @@ def eval_during_train(args, save_dir, train_task_id, eval_results=None, writer=N
     write_dict(os.path.join(save_dir, 'eval_results.json'), eval_results)
 
     # Remove the networks that have been evaluated (except for the network of the last task)
-    if train_task_id < (num_tasks-1) and args.del_models==1:
-        os.remove(os.path.join(save_dir, 'models', f'hnet_{train_task_id}.pth'))
+    if train_task_id < (num_tasks-1):
         os.remove(os.path.join(save_dir, 'models', f'tnet_{train_task_id}.pth'))
         os.remove(os.path.join(save_dir, 'models', f'node_{train_task_id}.pth'))
 
@@ -612,30 +530,16 @@ def eval_all(args, save_dir):
 
     # For storing the evaluation results
     eval_results['data'] = {'metrics': dict(), 'metric_errors': dict()}
-
-    # Shapes of the target network parameters
-    target_shapes = TargetNetwork.weight_shapes(n_in=args.tnet_dim+args.explicit_time, 
-                                                n_out=args.tnet_dim, 
-                                                hidden_layers=str_to_ints(args.tnet_arch), 
-                                                use_bias=True)
-
-    # Create the hypernetwork
-    hnet = HyperNetwork(layers=str_to_ints(args.hnet_arch), 
-                        te_dim=args.task_emb_dim, 
-                        target_shapes=target_shapes,
-                        dropout_rate=args.dropout,
-                        device=device).to(device)
         
-    # Create a target network without parameters
-    # Parameters are supplied during the forward pass of the hypernetwork
-    tnet = TargetNetwork(n_in=args.tnet_dim+args.explicit_time, 
+    # Create a target network with parameters
+    tnet = TargetNetwork(n_in=args.tnet_dim+args.task_emb_dim+args.explicit_time, 
                          n_out=args.tnet_dim, 
                          hidden_layers=str_to_ints(args.tnet_arch),
                          activation_fn=str_to_act(args.tnet_act), 
                          use_bias=True, 
-                         no_weights=True,
+                         no_weights=False,
                          init_weights=None, 
-                         dropout_rate=-1,  # Dropout is only used for hnet 
+                         dropout_rate=-1, 
                          use_batch_norm=False, 
                          bn_track_stats=False,
                          distill_bn_stats=False, 
@@ -644,8 +548,7 @@ def eval_all(args, save_dir):
 
     # The NODE uses the target network as the RHS of its
     # differential equation
-    # Apart from this, the NODE has no other trainable parameters
-    node = NODE(tnet, explicit_time=args.explicit_time, method=args.int_method).to(device)
+    node = NODETaskEmbedding(tnet, args.task_emb_dim, explicit_time=args.explicit_time, method=args.int_method).to(device)
 
     # Extract the list of demonstrations from the text file 
     # containing the sequence of demonstrations
@@ -673,7 +576,6 @@ def eval_all(args, save_dir):
         eval_results['data']['metric_errors'][f'train_task_{task_id}'] = dict()        
 
         # Load the networks for the current task_id
-        hnet = torch.load(os.path.join(save_dir, 'models', f'hnet_{task_id}.pth'))
         tnet = torch.load(os.path.join(save_dir, 'models', f'tnet_{task_id}.pth'))
         node = torch.load(os.path.join(save_dir, 'models', f'node_{task_id}.pth'))
 
@@ -683,21 +585,36 @@ def eval_all(args, save_dir):
         for eval_task_id in range(task_id+1):
             logging.info(f'Loaded network trained on task {task_id}, evaluating on task {eval_task_id}')
 
+            node.set_task_id(eval_task_id)
+
             # Figure is plotted only for the last task
             
-            eval_traj_metrics, eval_traj_metric_errors, plot_data = eval_task(args, eval_task_id, hnet, tnet, node, device)
+            # FIXME Dirty hack to handle an unimportant problem
+            # During evaluation, sometimes the predictions for the finetuned model are so bad
+            # that the ODE solver (odeint function) gives the following error:
+            # AssertionError: underflow in dt nan
+            # The FT model is just a lower baseline and so if this exception occurs
+            # We simply set the evaluated metrics to the value of the latest metrics
+            # and carry on
+            try:
+                eval_traj_metrics, eval_traj_metric_errors, plot_data = eval_task(args, eval_task_id, tnet, node, device)
+            except AssertionError as e:
+                logging.info(f'Caught exception {e}')
 
             # Plot the trajectories for the last trained model
             if task_id == (num_tasks-1) and args.plot_traj==1:
+
+                # Read the task names to use in the plot
+                # task_names_map = read_dict(args.task_names_path)
 
                 r = 1 if num_tasks<=10 else eval_task_id//(num_tasks//2)
                 c = eval_task_id if num_tasks<=10 else eval_task_id%(num_tasks//2)
                 t, y_all, ode_rhs, y_hat = plot_data
                 ax = axes[c] if num_tasks<=10 else axes[r][c]
                 handles, labels = plot_ode_simple(t, y_all, ode_rhs, y_hat, ax=ax, explicit_time=args.explicit_time, plot_vectorfield=args.plot_vectorfield)
-                
+                #name = list(task_names_map.values())[eval_task_id]
                 ax.set_title(eval_task_id, fontsize=args.plot_fs)
-                
+
                 # Remove axis labels and ticks
                 ax.get_xaxis().set_visible(False)
                 ax.get_yaxis().set_visible(False)

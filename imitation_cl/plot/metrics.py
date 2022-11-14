@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 import numpy as np
 from ..metrics.cl_metrics import get_arr_multiseed
 
@@ -64,3 +66,16 @@ def per_task_performance_multiseed(log_multiseed_dir, axes, y_lims, task_names_m
     handles, labels = axes[-1].get_legend_handles_labels()
     return handles, labels, cl_mid, cl_err, seeds, description
 
+def metric_box_plots_tb(swept, frechet, dtw):
+
+    fig, ax = plt.subplots(1,3,figsize=(8,4))
+
+    ax[0].boxplot(swept)
+    ax[1].boxplot(frechet)
+    ax[2].boxplot(dtw)
+
+    ax[0].set_xlabel('swept')
+    ax[1].set_xlabel('frechet')
+    ax[2].set_xlabel('dtw')
+
+    return fig

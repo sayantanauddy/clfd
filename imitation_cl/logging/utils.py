@@ -7,6 +7,17 @@ import numpy as np
 from pprint import pprint
 import itertools
 import glob
+from json import JSONEncoder
+
+
+class NumpyArrayEncoder(JSONEncoder):
+    """
+    Encodes numpy arrays for writing to a file
+    """
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return JSONEncoder.default(self, obj)
 
 class Dictobject(object):
     """
@@ -14,6 +25,23 @@ class Dictobject(object):
     """
     def __init__(self, d):
         self.__dict__ = d
+
+def transform(multilevelDict):
+    '''
+    Converts keys from '1' to 1 (str->int) for a nested dict
+    '''
+    return {int(key) if isinstance(key,str) and key.isdigit() else key: (transform(value) if isinstance(value, dict) else value) for key, value in multilevelDict.items()}
+
+def list2np(in_dict):
+    
+    for k, v in in_dict.items():
+        if isinstance(v, list):
+            in_dict[k] = np.array(v)
+        elif isinstance(v, dict):
+            list2np(v)
+        else:
+            in_dict[k] = v
+    return in_dict
 
 def read_dict(json_path):
     """Reads a json file into a dict and returns it.
@@ -38,6 +66,39 @@ def write_dict(json_path, json_dict):
     """
     with open(json_path, "w") as json_file:
         json.dump(json_dict, json_file, indent=4)
+
+def read_np_dict(json_path):
+    """Reads a json file into a dict and returns it.
+       If values in the nested dict are lists, they
+       are converted into numpy arrays.
+       If keys are ints in string format, they 
+       are converted to ints.
+
+    Args:
+        json_path (str): Path
+
+    Returns:
+        dict: Python dict
+    """
+    json_dict = read_dict(json_path)
+
+    # Fix str keys which are actually numbers
+    json_dict = transform(json_dict)
+
+    # Convert list to np array in values
+    json_dict = list2np(json_dict)
+
+    return json_dict
+
+def write_np_dict(json_path, json_dict):
+    """Writes dict containing numpy arrays to json file.
+
+    Args:
+        json_path (str): Path
+        json_dict (dict): Python dict
+    """
+    with open(json_path, "w") as json_file:
+        json.dump(json_dict, json_file, indent=4, cls=NumpyArrayEncoder)
 
 def read_numpy(numpy_file_path):
     """Reads a numpy archive file and returns the array

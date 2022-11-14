@@ -3,6 +3,7 @@ import os
 import glob
 import shutil
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import re
@@ -181,7 +182,8 @@ def get_arr(logdir_multiseed, acc_thresh_dict=None, agg_mode='median'):
     
     description = args['description']
 
-    num_tasks, cl_sequence = count_lines(os.path.join(local_home, '/'.join(args['seq_file'].split('/')[3:])))
+    seq_file_path = os.path.join(local_home, '/'.join(args['seq_file'].split('/')[3:]))
+    num_tasks, cl_sequence = count_lines(seq_file_path)
 
     # How many metrics are measured?
     metrics = data['metric_errors']['train_task_0']['eval_task_0'].keys()
@@ -354,7 +356,7 @@ def get_arr(logdir_multiseed, acc_thresh_dict=None, agg_mode='median'):
             
 
 
-def plot_per_task_comparison(compared_method_codes, log_dirs, axes, y_lims, title, fontsize, cl_sequence, alpha=0.15):
+def plot_per_task_comparison(compared_method_codes, log_dirs, axes, y_lims, title, fontsize, cl_sequence, alpha=0.15, custom_method_labels=None, custom_method_colors=None):
 
     num_tasks = 0
     per_task_errors_mid = dict()
@@ -382,6 +384,7 @@ def plot_per_task_comparison(compared_method_codes, log_dirs, axes, y_lims, titl
                 per_task_errors_high[method_code][metric].append(np.quantile(arr[r,0:r+1,:], 0.75))
                 per_task_errors_low[method_code][metric].append(np.quantile(arr[r,0:r+1,:], 0.25))
 
+    idx = 0
     for k,v in per_task_errors_mid.items():
         if k == 'SG':
             lw = 4
@@ -392,20 +395,25 @@ def plot_per_task_comparison(compared_method_codes, log_dirs, axes, y_lims, titl
 
         x = np.arange(0,num_tasks)
 
-        axes[0].plot(v['swept'], label=k, color=colors_models[k], lw=lw, marker='o', markersize=ms, markeredgecolor=adjust_lightness(colors_models[k], amount=0.5), ls='-')
+        color = colors_models[k] if custom_method_colors is None else custom_method_colors[idx]
+        label = k if custom_method_labels is None else custom_method_labels[idx]
+
+        axes[0].plot(v['swept'], label=label, color=color, lw=lw, marker='o', markersize=ms, markeredgecolor=adjust_lightness(color, amount=0.5), ls='-')
         high = per_task_errors_high[k]['swept']
         low = per_task_errors_low[k]['swept']
-        axes[0].fill_between(x, low, high, color=colors_models[k], alpha=alpha)
+        axes[0].fill_between(x, low, high, color=color, alpha=alpha)
 
-        axes[1].plot(v['frechet'], label=k, color=colors_models[k], lw=lw, marker='o', markersize=ms, markeredgecolor=adjust_lightness(colors_models[k], amount=0.5), ls='-')
+        axes[1].plot(v['frechet'], label=label, color=color, lw=lw, marker='o', markersize=ms, markeredgecolor=adjust_lightness(color, amount=0.5), ls='-')
         high = per_task_errors_high[k]['frechet']
         low = per_task_errors_low[k]['frechet']
-        axes[1].fill_between(x, low, high, color=colors_models[k], alpha=alpha)
+        axes[1].fill_between(x, low, high, color=color, alpha=alpha)
 
-        axes[2].plot(v['dtw'], label=k, color=colors_models[k], lw=lw, marker='o', markersize=ms, markeredgecolor=adjust_lightness(colors_models[k], amount=0.5), ls='-')
+        axes[2].plot(v['dtw'], label=label, color=color, lw=lw, marker='o', markersize=ms, markeredgecolor=adjust_lightness(color, amount=0.5), ls='-')
         high = per_task_errors_high[k]['dtw']
         low = per_task_errors_low[k]['dtw']
-        axes[2].fill_between(x, low, high, color=colors_models[k], alpha=alpha)
+        axes[2].fill_between(x, low, high, color=color, alpha=alpha)
+
+        idx += 1
 
     axes[0].set_ylabel('$\log_{10}$\n(Swept Area error)', fontsize=fontsize)
     axes[1].set_ylabel('$\log_{10}$\n(Frechet error)', fontsize=fontsize)
@@ -1078,7 +1086,8 @@ def final_model_box_violin(plot_dir,
                            log_dirs,
                            box_or_violin = 'box', 
                            width=0.6, 
-                           fontsize=16):
+                           fontsize=16,
+                           additional_colors_models=None):
     """
     
     1. Plot aggregate plot (1 box per method) and 1 metric
@@ -1126,7 +1135,12 @@ def final_model_box_violin(plot_dir,
     # Filter outliers
     # data_df = data_df[~data_df.groupby(['method_code', 'task_id', 'metric'])['datapoint'].apply(is_outlier)]
 
-    colors = [colors_models[mc] for mc in compared_method_codes]
+    colors = list()
+    for method_code in compared_method_codes:
+        if method_code in colors_models.keys():
+            colors.append(colors_models[method_code])
+        else:
+            colors.append(additional_colors_models[method_code])
 
     if select_task_ids is None:
         # Create box plots for all tasks separately
@@ -1581,6 +1595,10 @@ def create_all_plots(experiment_name,
                      fontsize_last_task=18,
                      fontsize_spider=18,
                      show_traj=False):
+
+    # To avoid issues with type 3 fonts while submitting paper
+    matplotlib.rcParams['pdf.fonttype'] = 42
+    matplotlib.rcParams['ps.fonttype'] = 42
 
     name = f'{experiment_name}_{dataset_name}_{time_input}'
     plot_dir = f'plots/{name}'

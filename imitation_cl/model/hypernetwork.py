@@ -1,8 +1,10 @@
+from logging import warning
 from typing import overload
 import numpy as np
 import random
 import math
 import matplotlib.pyplot as plt
+import warnings
 
 import torch
 import torch.nn as nn
@@ -164,6 +166,7 @@ def adam_step(optimizer, detach_dp=True):
     for group in optimizer.param_groups:
         for p in group['params']:
             if p.grad is None:
+                warning('grad is None')
                 continue
 
             if detach_dp:

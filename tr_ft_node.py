@@ -1,10 +1,8 @@
 import os
-from numpy.lib.npyio import save
 from tqdm import trange
 from argparse import ArgumentParser
 import logging
 import matplotlib.pyplot as plt
-import numpy as np
 
 import torch
 import torch.optim as optim
@@ -12,11 +10,13 @@ import torch.optim as optim
 from imitation_cl.train.utils import check_cuda, set_seed, get_sequence
 from imitation_cl.model.hypernetwork import TargetNetwork, str_to_ints, str_to_act
 from imitation_cl.model.node import NODETaskEmbedding
-from imitation_cl.data.lasa import LASA
+from imitation_cl.data.lasa import LASA, LASAExtended
 from imitation_cl.data.helloworld import HelloWorld
-from imitation_cl.data.utils import get_minibatch
+from imitation_cl.data.robottasks import RobotTasksPosition, RobotTasksOrientation
+from imitation_cl.data.utils import get_minibatch, get_minibatch_extended
 from imitation_cl.plot.trajectories import plot_ode_simple
 from imitation_cl.metrics.traj_metrics import mean_swept_error, mean_frechet_error_fast as mean_frechet_error, dtw_distance_fast as dtw_distance
+from imitation_cl.metrics.ori_metrics import quat_traj_distance
 from imitation_cl.logging.utils import custom_logging_setup, write_dict, read_dict, Dictobject
 
 #TODO Remove later
@@ -39,6 +39,8 @@ def parse_args(return_parser=False):
     parser.add_argument('--task_emb_dim', type=int, default=5, help='Dimension of the task embedding vector')
     parser.add_argument('--explicit_time', type=int, default=0, help='1: Use time as an explicit network input, 1: Do not use time')
 
+    parser.add_argument('--int_method', type=str, default='dopri5', help='Integration method')
+
     parser.add_argument('--data_class', type=str, required=True, help='Dataset class for training')
     parser.add_argument('--eval_during_train', type=int, default=0, help='0: net for a task is evaluated immediately after training, 1: eval for all nets is done after training of all tasks')
     parser.add_argument('--seed', type=int, required=True, help='Seed for reproducability')
@@ -46,11 +48,23 @@ def parse_args(return_parser=False):
     parser.add_argument('--log_dir', type=str, default='logs/', help='Main directory for saving logs')
     parser.add_argument('--description', type=str, required=True, help='String identifier for experiment')
 
+    # Old (data in mat files) or new (data in numpy archives) data loading process
+    parser.add_argument('--data_type', type=str, default='mat', help='Type of data to load from - mat: mat files, np: numpy archives')
+
+    # Scaling term for tangent vectors for learning orientation
+    parser.add_argument('--tangent_vec_scale', type=float, default=1.0, help='Tangent vector scaling term')
+
+    # Plot traj or not
+    parser.add_argument('--plot_traj', type=int, default=1, help='1: Plot the traj plots, 0: Dont plot traj_plots')
+
+    # Plot vectorfield or not
+    parser.add_argument('--plot_vectorfield', type=int, default=1, help='1: Plot vector field in the traj plots, 0: Dont plot vector field')
+
     # Args for plot formatting
     parser.add_argument('--plot_fs', type=int, default=10, help='Fontsize to be used in the plots')
     parser.add_argument('--figw', type=float, default=16.0, help='Plot width')
     parser.add_argument('--figh', type=float, default=3.3, help='Plot height')
-    parser.add_argument('--task_names_path', type=str, required=True, help='Path of the JSON file with task names used in plot')
+    #parser.add_argument('--task_names_path', type=str, required=True, help='Path of the JSON file with task names used in plot')
 
     if return_parser:
         # This is used by the slurm creator script
@@ -66,9 +80,25 @@ def train_task(args, task_id, tnet, node, device):
 
     data = None
     if args.data_class == 'LASA':
-        data = LASA(data_dir=args.data_dir, filename=filenames[task_id], replicate_num=args.replicate_num)
+        if args.data_type == 'mat':
+            data = LASA(data_dir=args.data_dir, filename=filenames[task_id], replicate_num=args.replicate_num)
+        elif args.data_type == 'np':
+            datafile = os.path.join(args.data_dir, filenames[task_id])
+            data = LASAExtended(datafile, seq_len=args.tsub, norm=True, device=device)
+        else:
+            raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
     elif args.data_class == 'HelloWorld':
         data = HelloWorld(data_dir=args.data_dir, filename=filenames[task_id])
+    elif args.data_class == 'RobotTasksPosition':
+        if args.data_type == 'np':
+            data = RobotTasksPosition(data_dir=args.data_dir, datafile=filenames[task_id], device=device)
+        else:
+            raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
+    elif args.data_class == 'RobotTasksOrientation':
+        if args.data_type == 'np':
+            data = RobotTasksOrientation(data_dir=args.data_dir, datafile=filenames[task_id], device=device, scale=args.tangent_vec_scale)
+        else:
+            raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
     else:
         raise NotImplementedError(f'Unknown dataset class {args.data_class}')
 
@@ -101,7 +131,10 @@ def train_task(args, task_id, tnet, node, device):
         # Set the target network in the NODE
         node.set_target_network(tnet)
 
-        t, y_all = get_minibatch(data.t[0], data.pos, tsub=args.tsub)
+        if args.data_type == 'mat':
+            t, y_all = get_minibatch(data.t[0], data.pos, tsub=args.tsub)
+        elif args.data_type == 'np':
+            t, y_all = get_minibatch_extended(data.t[0], data.pos, nsub=None, tsub=args.tsub, dtype=torch.float)
 
         # The time steps
         t = t.to(device)
@@ -141,9 +174,25 @@ def eval_task(args, task_id, tnet, node, device):
 
     data = None
     if args.data_class == 'LASA':
-        data = LASA(data_dir=args.data_dir, filename=filenames[task_id])
+        if args.data_type == 'mat':
+            data = LASA(data_dir=args.data_dir, filename=filenames[task_id], replicate_num=args.replicate_num)
+        elif args.data_type == 'np':
+            datafile = os.path.join(args.data_dir, filenames[task_id])
+            data = LASAExtended(datafile, seq_len=args.tsub, norm=True, device=device)
+        else:
+            raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
     elif args.data_class == 'HelloWorld':
         data = HelloWorld(data_dir=args.data_dir, filename=filenames[task_id])
+    elif args.data_class == 'RobotTasksPosition':
+        if args.data_type == 'np':
+            data = RobotTasksPosition(data_dir=args.data_dir, datafile=filenames[task_id], device=device)
+        else:
+            raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
+    elif args.data_class == 'RobotTasksOrientation':
+        if args.data_type == 'np':
+            data = RobotTasksOrientation(data_dir=args.data_dir, datafile=filenames[task_id], device=device, scale=args.tangent_vec_scale)
+        else:
+            raise NotImplementedError(f'data_type {args.data_type} not available for data_class {args.data_class}')
     else:
         raise NotImplementedError(f'Unknown dataset class {args.data_class}')
 
@@ -155,16 +204,31 @@ def eval_task(args, task_id, tnet, node, device):
     # Choose the task_id for the NODE
     node.set_task_id(task_id)
 
-    # The time steps
-    t = torch.from_numpy(data.t[0]).float().to(device)
+    if args.data_type == 'mat':
+        # The time steps
+        t = torch.from_numpy(data.t[0]).float().to(device)
 
-    # The starting position 
-    # (n,d-dimensional, where n is the num of demos and 
-    # d is the dimension of each point)
-    y_start = torch.from_numpy(data.pos[:,0]).float().to(device)
+        # The starting position 
+        # (n,d-dimensional, where n is the num of demos and 
+        # d is the dimension of each point)
+        y_start = torch.from_numpy(data.pos[:,0]).float().to(device)
 
-    # The entire demonstration trajectory
-    y_all = torch.from_numpy(data.pos).float().to(device)
+        # The entire demonstration trajectory
+        y_all = torch.from_numpy(data.pos).float().to(device)
+    elif args.data_type == 'np':
+        # The time steps
+        t = data.t[0].float()
+
+        # The starting position 
+        # (n,d-dimensional, where n is the num of demos and 
+        # d is the dimension of each point)
+        #y_start = torch.unsqueeze(dataset.pos[0,0], dim=0)
+        # Use the translated trajectory (goal at origin)
+        y_start = data.pos[:,0]
+        y_start = y_start.float()
+
+        # The entire demonstration trajectory
+        y_all = data.pos.float()
 
     # Predicted trajectory
     y_hat = node(t, y_start) # forward simulation
@@ -177,19 +241,29 @@ def eval_task(args, task_id, tnet, node, device):
     y_all_np = data.unnormalize(y_all_np)
     y_hat_np = data.unnormalize(y_hat_np)
 
-    metric_swept_err, metric_swept_errs = mean_swept_error(y_all_np, y_hat_np)
-    metric_frechet_err, metric_frechet_errs = mean_frechet_error(y_all_np, y_hat_np)
-    metric_dtw_err, metric_dtw_errs = dtw_distance(y_all_np, y_hat_np)
+    if args.data_class == 'RobotTasksOrientation':
+        # Convert predicted trajectory from tangent vectors to quaternions
+        q_hat_np = data.from_tangent_plane(y_hat_np)
 
-    eval_traj_metrics = {'swept': metric_swept_err, 
-                         'frechet': metric_frechet_err, 
-                         'dtw': metric_dtw_err}
+        # Compare the predicted quaternion trajectorywith the ground truth
+        metric_quat_err, metric_quat_errs = quat_traj_distance(data.quat_data, q_hat_np)
 
-    # Store the metric errors
-    # Convert np arrays to list so that these can be written to JSON
-    eval_traj_metric_errors = {'swept': metric_swept_errs.tolist(), 
-                               'frechet': metric_frechet_errs.tolist(), 
-                               'dtw': metric_dtw_errs.tolist()}
+        eval_traj_metrics = {'quat_error': metric_quat_err}
+        eval_traj_metric_errors = {'quat_error': metric_quat_errs.tolist()}
+    else:
+        metric_swept_err, metric_swept_errs = mean_swept_error(y_all_np, y_hat_np)
+        metric_frechet_err, metric_frechet_errs = mean_frechet_error(y_all_np, y_hat_np)
+        metric_dtw_err, metric_dtw_errs = dtw_distance(y_all_np, y_hat_np)
+
+        eval_traj_metrics = {'swept': metric_swept_err, 
+                            'frechet': metric_frechet_err, 
+                            'dtw': metric_dtw_err}
+
+        # Store the metric errors
+        # Convert np arrays to list so that these can be written to JSON
+        eval_traj_metric_errors = {'swept': metric_swept_errs.tolist(), 
+                                'frechet': metric_frechet_errs.tolist(), 
+                                'dtw': metric_dtw_errs.tolist()}
 
     # Data that is used for creating a plot of demonstration
     # trajectories and predicted trajectories
@@ -225,7 +299,7 @@ def train_all(args):
     # differential equation
     # In addition this NODE has a trainable task embedding vector,
     # one for each task
-    node = NODETaskEmbedding(tnet, args.task_emb_dim, args.explicit_time).to(device)
+    node = NODETaskEmbedding(tnet, args.task_emb_dim, args.explicit_time, method=args.int_method).to(device)
 
     # Extract the list of demonstrations from the text file 
     # containing the sequence of demonstrations
@@ -306,7 +380,7 @@ def eval_during_train(args, save_dir, train_task_id, eval_results=None):
 
     # The NODE uses the target network as the RHS of its
     # differential equation
-    node = NODETaskEmbedding(tnet, args.task_emb_dim, args.explicit_time).to(device)
+    node = NODETaskEmbedding(tnet, args.task_emb_dim, args.explicit_time, method=args.int_method).to(device)
 
     # Extract the list of demonstrations from the text file 
     # containing the sequence of demonstrations
@@ -316,7 +390,7 @@ def eval_during_train(args, save_dir, train_task_id, eval_results=None):
 
     # After the last task has been trained, we create a plot
     # showing the performance on all the tasks
-    if train_task_id == (num_tasks - 1):
+    if train_task_id == (num_tasks - 1) and args.plot_traj==1:
         figw, figh = args.figw, args.figh
         plt.subplots_adjust(left=1/figw, right=1-1/figw, bottom=1/figh, top=1-1/figh)
         fig, axes = plt.subplots(figsize=(figw, figh), 
@@ -324,7 +398,8 @@ def eval_during_train(args, save_dir, train_task_id, eval_results=None):
                                  sharex=True,
                                  ncols=num_tasks if num_tasks<=10 else (num_tasks//2), 
                                  nrows=1 if num_tasks<=10 else 2,
-                                 subplot_kw={'aspect': 1})
+                                 subplot_kw={'aspect': 1 if args.plot_vectorfield==1 else 'auto',
+                                             'projection': 'rectilinear' if args.plot_vectorfield==1 else '3d'})
 
         # Row column for plot with trajectories
         r, c = 0, 0
@@ -357,18 +432,18 @@ def eval_during_train(args, save_dir, train_task_id, eval_results=None):
             logging.info(f'Caught exception {e}')
 
         # Plot the trajectories for the last trained model
-        if train_task_id == (num_tasks-1):
+        if train_task_id == (num_tasks-1) and args.plot_traj==1:
 
             # Read the task names to use in the plot
-            task_names_map = read_dict(args.task_names_path)
+            # task_names_map = read_dict(args.task_names_path)
 
             r = 1 if num_tasks<=10 else eval_task_id//(num_tasks//2)
             c = eval_task_id if num_tasks<=10 else eval_task_id%(num_tasks//2)
             t, y_all, ode_rhs, y_hat = plot_data
             ax = axes[c] if num_tasks<=10 else axes[r][c]
-            handles, labels = plot_ode_simple(t, y_all, ode_rhs, y_hat, ax=ax, explicit_time=args.explicit_time)
-            name = list(task_names_map.values())[eval_task_id]
-            ax.set_title(name, fontsize=args.plot_fs)
+            handles, labels = plot_ode_simple(t, y_all, ode_rhs, y_hat, ax=ax, explicit_time=args.explicit_time, plot_vectorfield=args.plot_vectorfield)
+            # name = list(task_names_map.values())[eval_task_id]
+            ax.set_title(eval_task_id, fontsize=args.plot_fs)
 
             # Remove axis labels and ticks
             ax.get_xaxis().set_visible(False)
@@ -383,11 +458,14 @@ def eval_during_train(args, save_dir, train_task_id, eval_results=None):
         eval_results['data']['metrics'][f'train_task_{train_task_id}'][f'eval_task_{eval_task_id}'] = eval_traj_metrics
         eval_results['data']['metric_errors'][f'train_task_{train_task_id}'][f'eval_task_{eval_task_id}'] = eval_traj_metric_errors
 
-    if train_task_id == (num_tasks-1):
+    if train_task_id == (num_tasks-1) and args.plot_traj==1:
         fig.subplots_adjust(hspace=-0.2, wspace=0.1)
 
         # Save the evaluation plot
-        plt.savefig(os.path.join(save_dir, f'plot_trajectories_{args.description}.pdf'), bbox_inches='tight')
+        if args.plot_vectorfield == 1:
+            plt.savefig(os.path.join(save_dir, f'plot_trajectories_{args.description}.pdf'), bbox_inches='tight')
+        else:
+            plt.savefig(os.path.join(save_dir, f'plot_trajectories_{args.description}.pdf'))
 
     # (Over)write the evaluation results to a file in the log dir
     write_dict(os.path.join(save_dir, 'eval_results.json'), eval_results)
@@ -438,7 +516,7 @@ def eval_all(args, save_dir):
 
     # The NODE uses the target network as the RHS of its
     # differential equation
-    node = NODETaskEmbedding(tnet, args.task_emb_dim, explicit_time=args.explicit_time).to(device)
+    node = NODETaskEmbedding(tnet, args.task_emb_dim, explicit_time=args.explicit_time, method=args.int_method).to(device)
 
     # Extract the list of demonstrations from the text file 
     # containing the sequence of demonstrations
@@ -455,7 +533,8 @@ def eval_all(args, save_dir):
                              sharex=True,
                              ncols=num_tasks if num_tasks<=10 else (num_tasks//2), 
                              nrows=1 if num_tasks<=10 else 2,
-                             subplot_kw={'aspect': 1})
+                             subplot_kw={'aspect': 1 if args.plot_vectorfield==1 else 'auto',
+                                         'projection': 'rectilinear' if args.plot_vectorfield==1 else '3d'})
 
     for task_id in range(num_tasks):
 
@@ -489,18 +568,18 @@ def eval_all(args, save_dir):
                 logging.info(f'Caught exception {e}')
 
             # Plot the trajectories for the last trained model
-            if task_id == (num_tasks-1):
+            if task_id == (num_tasks-1) and args.plot_traj==1:
 
                 # Read the task names to use in the plot
-                task_names_map = read_dict(args.task_names_path)
+                # task_names_map = read_dict(args.task_names_path)
 
                 r = 1 if num_tasks<=10 else eval_task_id//(num_tasks//2)
                 c = eval_task_id if num_tasks<=10 else eval_task_id%(num_tasks//2)
                 t, y_all, ode_rhs, y_hat = plot_data
                 ax = axes[c] if num_tasks<=10 else axes[r][c]
-                handles, labels = plot_ode_simple(t, y_all, ode_rhs, y_hat, ax=ax, explicit_time=args.explicit_time)
-                name = list(task_names_map.values())[eval_task_id]
-                ax.set_title(name, fontsize=args.plot_fs)
+                handles, labels = plot_ode_simple(t, y_all, ode_rhs, y_hat, ax=ax, explicit_time=args.explicit_time, plot_vectorfield=args.plot_vectorfield)
+                #name = list(task_names_map.values())[eval_task_id]
+                ax.set_title(eval_task_id, fontsize=args.plot_fs)
 
                 # Remove axis labels and ticks
                 ax.get_xaxis().set_visible(False)
@@ -515,10 +594,14 @@ def eval_all(args, save_dir):
             eval_results['data']['metrics'][f'train_task_{task_id}'][f'eval_task_{eval_task_id}'] = eval_traj_metrics
             eval_results['data']['metric_errors'][f'train_task_{task_id}'][f'eval_task_{eval_task_id}'] = eval_traj_metric_errors
 
-    fig.subplots_adjust(hspace=-0.2, wspace=0.1)
+    if args.plot_traj==1:
+        fig.subplots_adjust(hspace=-0.2, wspace=0.1)
 
-    # Save the evaluation plot
-    plt.savefig(os.path.join(save_dir, f'plot_trajectories_{args.description}.pdf'), bbox_inches='tight')
+        # Save the evaluation plot
+        if args.plot_vectorfield == 1:
+            plt.savefig(os.path.join(save_dir, f'plot_trajectories_{args.description}.pdf'), bbox_inches='tight')
+        else:
+            plt.savefig(os.path.join(save_dir, f'plot_trajectories_{args.description}.pdf'))
 
     # Write the evaluation results to a file in the log dir
     write_dict(os.path.join(save_dir, 'eval_results.json'), eval_results)

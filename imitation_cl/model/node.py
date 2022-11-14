@@ -17,11 +17,12 @@ def integrate(ode_rhs,x0,t,rtol=1e-6,atol=1e-7, method='dopri5'):
     return odeint(ode_rhs, x0, t, method=method, rtol=rtol, atol=atol).permute(1,0,2)
 
 class NODE(nn.Module):
-    def __init__(self, target_network, explicit_time=0):
+    def __init__(self, target_network, explicit_time=0, method='dopri5'):
         ''' d - ODE dimensionality '''
         super().__init__()
         self.set_target_network(target_network)
         self.explicit_time = explicit_time
+        self.method = method
 
     def set_target_network(self, target_network):
         self.target_network = target_network
@@ -36,7 +37,7 @@ class NODE(nn.Module):
         else:
             raise NotImplementedError(f'Invalid value of explicit_time={self.explicit_time} (only 0 or 1 allowed)')
     
-    def forward(self, t, x0, method='dopri5'):
+    def forward(self, t, x0):
         ''' Forward integrates the NODE system and returns state solutions
             Input
                 t  - [T]   time points
@@ -44,12 +45,12 @@ class NODE(nn.Module):
             Returns
                 X  - [N,T,d] forward simulated states
         '''
-        return integrate(self.ode_rhs, x0, t).float()
+        return integrate(self.ode_rhs, x0, t, method=self.method).float()
 
 class NODETaskEmbedding(NODE):
-    def __init__(self, target_network, te_dim, explicit_time=0):
+    def __init__(self, target_network, te_dim, explicit_time=0, method='dopri5'):
         ''' d - ODE dimensionality '''
-        super().__init__(target_network, explicit_time)
+        super().__init__(target_network, explicit_time, method=method)
 
         # Empty parameter list of task embeddings
         # Before learning each task, an embedding is
@@ -119,8 +120,7 @@ class NODETaskEmbedding(NODE):
     
     @property
     def ode_rhs(self):
-        ''' returns the differential function '''
-        
+        ''' returns the differential function '''        
         if self.explicit_time == 1:
             return lambda t,x: self.embedded_forward(torch.cat([x, t.repeat(*(list(x.shape[0:-1])+[1]))], dim=-1))
         elif self.explicit_time == 0:
@@ -130,8 +130,8 @@ class NODETaskEmbedding(NODE):
 
 
 class SINODETaskEmbedding(NODETaskEmbedding):
-    def __init__(self, target_network, te_dim, si_c, si_epsilon, explicit_time=0):
-        super().__init__(target_network, te_dim, explicit_time)
+    def __init__(self, target_network, te_dim, si_c, si_epsilon, explicit_time=0, method='dopri5'):
+        super().__init__(target_network, te_dim, explicit_time, method)
 
         # Set the SI hyperparameters
         self.si_c = si_c           
@@ -151,6 +151,15 @@ class SINODETaskEmbedding(NODETaskEmbedding):
                 n = n.replace('.', '__')
                 self.register_buffer(f'W_{n}', p.data.detach().clone().zero_())
                 self.register_buffer(f'p_old_{n}', p.data.detach().clone())
+
+    def check(self):
+
+        for n,p in self.named_buffers():
+            print(n,p.sum().item())
+
+        for n,p in self.target_network.named_parameters():
+            print(n,p.sum().item())
+
 
     def update_omega(self):
         """
@@ -217,8 +226,8 @@ class SINODETaskEmbedding(NODETaskEmbedding):
             return torch.tensor(0.)
 
 class MASNODETaskEmbedding(NODETaskEmbedding):
-    def __init__(self, target_network, te_dim, mas_lambda, explicit_time=0):
-        super().__init__(target_network, te_dim, explicit_time)
+    def __init__(self, target_network, te_dim, mas_lambda, explicit_time=0, method='dopri5'):
+        super().__init__(target_network, te_dim, explicit_time, method)
 
         # Set the MAS hyperparameter
         self.mas_lambda = mas_lambda           
@@ -277,6 +286,7 @@ class MASNODETaskEmbedding(NODETaskEmbedding):
 
                 # Starting points
                 y_start = y_all_[:,0].float()
+                y_start.requires_grad = True
 
                 # Compute the output of the target network
                 # Using the last time stamp to find the sensitivity of the target network's output

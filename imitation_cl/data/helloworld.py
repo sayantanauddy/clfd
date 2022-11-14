@@ -63,6 +63,101 @@ class HelloWorld():
             raise NotImplementedError(f'Unknown type={type}')
         return arr
 
+    def zero_center(self):
+
+        # Find the goal position
+        self.goal = self.pos[:,-1,:]
+
+        # Translate the goal position to the origin
+        # self.pos_goal_origin should be used for training
+        self.pos_goal_origin = self.pos - torch.stack([self.goal]*self.pos.shape[1], axis=1)
+
+    def unzero_center(self, arr):
+
+        # Translate the prediction away from the origin
+        return arr + torch.stack([self.goal]*self.pos.shape[1], axis=1)
+
+
+class HelloWorldExtended():
+    def __init__(self, data_dir, filename, norm=True, device=torch.device('cpu'), record_freq=60):
+        """
+        Loads the HelloWorld dataset
+
+        Args:
+            data_dir (str): Directory where the LASA mat files are located
+            filename (str): Which mat file to load (with or without .mat extension)
+            norm (bool): Whether to normalize the trajectories across the demonstrations
+            device (torch device): Device on which to train
+            record_freq (int): Frequency of recording during demonstration in Hz
+        """
+
+        # Define Variables
+        self.data_dir = data_dir
+        self.filename = filename
+        self.norm = norm
+        self.device = device
+        self.record_freq = record_freq
+
+        # Load the .npy file
+        self.pos = np.load(os.path.join(self.data_dir, filename))
+        self.pos = self.pos[:,:,0:2]
+        self.num_demos = self.pos.shape[0]
+        self.traj_dim = self.pos.shape[2]
+        self.traj_len = self.pos.shape[1]
+
+        self.t = [np.linspace(0.0, self.traj_len, self.traj_len)/record_freq]
+
+        # Normalize the trajectories if needed
+        if self.norm:
+            self.pos, self.pos_mean, self.pos_std = self.normalize(self.pos)
+            self.pos, self.pos_mean, self.pos_std = torch.from_numpy(self.pos), torch.from_numpy(self.pos_mean), torch.from_numpy(self.pos_std)
+            self.pos, self.pos_mean, self.pos_std = self.pos.to(device), self.pos_mean.to(device), self.pos_std.to(device)
+        else:
+            self.pos_mean, self.pos_std = None, None
+            self.pos = torch.from_numpy(self.pos)
+            self.pos = self.pos.to(device)
+
+        self.t = torch.from_numpy(np.array(self.t)).to(device)
+
+    def normalize(self, arr):
+        """
+        Normalizes the input array
+        """
+        # Compute the mean and std for x,y across all demonstration trajectories
+        mean = np.expand_dims(np.mean(np.reshape(arr, (self.num_demos*self.traj_len, self.traj_dim)), axis=0), axis=0)
+        std = np.expand_dims(np.std(np.reshape(arr, (self.num_demos*self.traj_len, self.traj_dim)), axis=0), axis=0)
+        arr = (arr - mean)/std
+        return arr, mean, std
+
+    def denormalize(self, arr, type='pos'):
+        """
+        Denormalizes the input array
+        """
+        if not self.norm:
+            return arr
+            
+        if type == 'pos':
+            arr = arr*self.pos_std.cpu().detach().numpy() + self.pos_mean.cpu().detach().numpy()
+        else:
+            raise NotImplementedError(f'Unknown type={type}')
+        return arr
+
+    def zero_center(self):
+
+        # Find the goal position
+        self.goal = self.pos[:,-1,:]
+
+        # Translate the goal position to the origin
+        # self.pos_goal_origin should be used for training
+        self.pos_goal_origin = self.pos - torch.stack([self.goal]*self.pos.shape[1], axis=1)
+
+    def unzero_center(self, arr):
+
+        # Translate the prediction away from the origin
+        return arr + torch.stack([self.goal]*self.pos.shape[1], axis=1)
+
+
+
 ### Functions for processing the helloworld dataset
 
 def plot_demo(pos):

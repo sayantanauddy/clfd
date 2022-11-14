@@ -52,7 +52,7 @@ def parse_args(return_parser=False):
     parser.add_argument('--plot_fs', type=int, default=10, help='Fontsize to be used in the plots')
     parser.add_argument('--figw', type=float, default=16.0, help='Plot width')
     parser.add_argument('--figh', type=float, default=3.3, help='Plot height')
-    parser.add_argument('--task_names_path', type=str, required=True, help='Path of the JSON file with task names used in plot')
+    #parser.add_argument('--task_names_path', type=str, required=True, help='Path of the JSON file with task names used in plot')
 
     if return_parser:
         # This is used by the slurm creator script
@@ -380,15 +380,15 @@ def eval_during_train(args, save_dir, train_task_id, eval_results=None):
         if train_task_id == (num_tasks-1):
 
             # Read the task names to use in the plot
-            task_names_map = read_dict(args.task_names_path)
+            #task_names_map = read_dict(args.task_names_path)
 
             r = 1 if num_tasks<=10 else eval_task_id//(num_tasks//2)
             c = eval_task_id if num_tasks<=10 else eval_task_id%(num_tasks//2)
             t, y_all, ode_rhs, y_hat = plot_data
             ax = axes[c] if num_tasks<=10 else axes[r][c]
             handles, labels = plot_ode_simple(t, y_all, ode_rhs, y_hat, ax=ax, explicit_time=args.explicit_time)
-            name = list(task_names_map.values())[eval_task_id]
-            ax.set_title(name, fontsize=args.plot_fs)
+            #name = list(task_names_map.values())[eval_task_id]
+            ax.set_title(eval_task_id, fontsize=args.plot_fs)
 
             # Remove axis labels and ticks
             ax.get_xaxis().set_visible(False)
@@ -502,15 +502,15 @@ def eval_all(args, save_dir):
             if task_id == (num_tasks-1):
 
                 # Read the task names to use in the plot
-                task_names_map = read_dict(args.task_names_path)
+                #task_names_map = read_dict(args.task_names_path)
 
                 r = 1 if num_tasks<=10 else eval_task_id//(num_tasks//2)
                 c = eval_task_id if num_tasks<=10 else eval_task_id%(num_tasks//2)
                 t, y_all, ode_rhs, y_hat = plot_data
                 ax = axes[c] if num_tasks<=10 else axes[r][c]
                 handles, labels = plot_ode_simple(t, y_all, ode_rhs, y_hat, ax=ax, explicit_time=args.explicit_time)
-                name = list(task_names_map.values())[eval_task_id]
-                ax.set_title(name, fontsize=args.plot_fs)
+                #name = list(task_names_map.values())[eval_task_id]
+                ax.set_title(eval_task_id, fontsize=args.plot_fs)
                 # Remove axis labels and ticks
                 ax.get_xaxis().set_visible(False)
                 ax.get_yaxis().set_visible(False)

@@ -144,3 +144,89 @@ class LASA():
         else:
             raise NotImplementedError(f'Unknown type={type}')
         return arr
+
+class LASAExtended():
+
+    def __init__(self, datafile, seq_len, norm=True, device=torch.device('cpu')):
+        """
+        Loads the extended LASA trajectories. 
+        Can be used for trajectories of 2 or more dimensions.
+
+        All the data is first moved to the GPU (if available).
+        Since the entire dataset is small, moving it to the GPU may be more efficient.
+
+        Args:
+            datafile (str): Path of the numpy archive (npz) with the trajectory data.
+            seq_len (int): Length of sampled trajectory subsequence.
+            norm (bool, optional): Whether to normalize the trajectories. Defaults to True.
+            device (torch.device, optional): Which device to move the data to. Defaults to torch.device('cpu').
+        """
+        self.datafile = datafile
+        self.seq_len = seq_len
+        self.norm = norm
+        self.device = device
+
+        # Read the numpy data and store all the trajectories
+        data = np.load(self.datafile)
+
+        # The trajectores and time stamps
+        self.pos = data['pos']
+        self.t = data['t']
+
+        # Find the number of sequences N and the length of each sequence T
+        [self.num_demos, self.num_timesteps, self.data_dim] = self.pos.shape
+
+        # Normalize the trajectories if needed
+        # Convert to tensors and move to the required device
+        if self.norm:
+            self.pos, self.pos_mean, self.pos_std = self.normalize(self.pos)
+            self.pos, self.pos_mean, self.pos_std = torch.from_numpy(self.pos), torch.from_numpy(self.pos_mean), torch.from_numpy(self.pos_std)
+            self.pos, self.pos_mean, self.pos_std = self.pos.to(device), self.pos_mean.to(device), self.pos_std.to(device)
+        else:
+            self.pos_mean, self.pos_std = None, None
+            self.pos = torch.from_numpy(self.pos)
+            self.pos = self.pos.to(device)
+        self.t = torch.from_numpy(self.t).to(device)
+
+        # Translating the goal to the origin
+        self.pos_offset = self.pos[:,-1,:]
+
+    def normalize(self, arr):
+        """
+        Normalizes the input array
+        """
+        # Compute the mean and std for x,y across all demonstration trajectories
+        mean = np.expand_dims(np.mean(np.reshape(arr, (self.num_demos*self.num_timesteps, self.data_dim)), axis=0), axis=0)
+        std = np.expand_dims(np.std(np.reshape(arr, (self.num_demos*self.num_timesteps, self.data_dim)), axis=0), axis=0)
+        arr = (arr - mean)/std
+        return arr, mean, std
+
+    def denormalize(self, arr, type='pos'):
+        """
+        Denormalizes the input array
+        """
+        if not self.norm:
+            return arr
+            
+        if type == 'pos':
+            arr = arr*self.pos_std.cpu().detach().numpy() + self.pos_mean.cpu().detach().numpy()
+        else:
+            raise NotImplementedError(f'Unknown type={type}')
+        return arr
+
+    def unnormalize(self, arr, type='pos'):
+        return self.denormalize(arr, type)
+
+    def zero_center(self):
+
+        # Find the goal position
+        self.goal = self.pos[:,-1,:]
+
+        # Translate the goal position to the origin
+        # self.pos_goal_origin should be used for training
+        self.pos_goal_origin = self.pos - torch.stack([self.goal]*self.pos.shape[1], axis=1)
+
+    def unzero_center(self, arr):
+
+        # Translate the prediction away from the origin
+        return arr + torch.stack([self.goal]*self.pos.shape[1], axis=1)
