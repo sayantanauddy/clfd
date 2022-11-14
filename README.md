@@ -70,7 +70,7 @@ First download the pretrained models and extract them to the directory `trained_
 cd <path/to/this/repository>
 cd trained_models
 wget https://iis.uibk.ac.at/public/auddy/clfd/trained_models/trained_models.tar.gz
-tar -xvf trained_models.tar.gz
+tar -xvf trained_models.tar.gz --strip-components=1
 ```
 
 Then run the notebook `predict_traj_saved_models.ipynb` for generating trajectory predictions using the pretrained models provided by us.
