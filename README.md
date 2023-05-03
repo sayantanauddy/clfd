@@ -1,4 +1,4 @@
-# Continual Learning from Demonstration of Robotic Skills
+# Continual Learning from Demonstration of Robotics Skills
 
 Methods for teaching motion skills to robots focus on training for a single skill at a time. Robots capable of learning from demonstration can considerably benefit from the added ability to learn new movement skills without forgetting what was learned in the past. To this end, we propose an approach for continual learning from demonstration using hypernetworks and neural ordinary differential equation solvers. We empirically demonstrate the effectiveness of this approach in remembering long sequences of trajectory learning tasks without the need to store any data from past demonstrations. Our results show that hypernetworks outperform other state-of-the-art continual learning approaches for learning from demonstration. In our experiments, we use the popular LASA benchmark, and two new datasets of kinesthetic demonstrations collected with a real robot that we introduce in our [paper](https://arxiv.org/abs/2202.06843) called the *HelloWorld* and *RoboTasks* datasets. We evaluate our approach on a physical robot and demonstrate its effectiveness in learning realistic robotic tasks involving changing positions as well as orientations. We report both trajectory error metrics and continual learning metrics, and we propose two new continual learning metrics. Our code, along with the newly collected datasets, is available in this repository.
 
@@ -126,14 +126,16 @@ Then run the notebook `predict_traj_saved_models.ipynb` for generating trajector
 If you use this code or our results in your research, please cite:
 
 ```
-@misc{https://doi.org/10.48550/arxiv.2202.06843,
-  doi = {10.48550/ARXIV.2202.06843},
-  url = {https://arxiv.org/abs/2202.06843},
-  author = {Auddy, Sayantan and Hollenstein, Jakob and Saveriano, Matteo and Rodríguez-Sánchez, Antonio and Piater, Justus},
-  keywords = {Robotics (cs.RO), Machine Learning (cs.LG), FOS: Computer and information sciences, FOS: Computer and information sciences},
-  title = {Continual Learning from Demonstration of Robotic Skills},
-  publisher = {arXiv},
-  year = {2022},
-  copyright = {Creative Commons Attribution 4.0 International}
+@article{AUDDY2023104427,
+title = {Continual learning from demonstration of robotics skills},
+journal = {Robotics and Autonomous Systems},
+volume = {165},
+pages = {104427},
+year = {2023},
+issn = {0921-8890},
+doi = {https://doi.org/10.1016/j.robot.2023.104427},
+url = {https://www.sciencedirect.com/science/article/pii/S0921889023000660},
+author = {Sayantan Auddy and Jakob Hollenstein and Matteo Saveriano and Antonio Rodríguez-Sánchez and Justus Piater},
+keywords = {Learning from demonstration, Continual learning, Hypernetwork, Neural ordinary differential equation solver}
 }
 ```
